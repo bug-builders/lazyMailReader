@@ -1,0 +1,16 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+flask = "*"
+sentence-transformers = "*"
+torch = "*"
+protobuf = "<=3.20.0"
+
+[requires]
+python_version = "3.10"
+
+[pipenv]
+allow_prereleases = true
