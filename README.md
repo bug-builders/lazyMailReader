@@ -1,6 +1,7 @@
 # Demo
 
-![demo](https://user-images.githubusercontent.com/2556191/233790939-a187e9cd-797a-4e91-a6f0-47c2f9fee037.svg)
+![demo](https://user-images.githubusercontent.com/2556191/233791205-f3ee56da-2601-4d11-ac09-195605445e85.svg)
+
 
 # Setup
 
