@@ -1,11 +1,18 @@
 import { LazyMailReaderMetadata } from "../../../vectorstores/lazyMailReader.js";
+import Crypto from "crypto";
 // @ts-ignore
 import EmlParser from "eml-parser";
 import fs from "fs";
 import { Document } from "langchain/document";
 import { NodeHtmlMarkdown } from "node-html-markdown";
 
-export async function emlToDocument(eml: {
+export function generateSHA256(toHash: string): string {
+	const hash = Crypto.createHash("sha256");
+	hash.update(toHash);
+	return hash.digest("hex");
+}
+
+export async function emlToDocuments(eml: {
 	filename: string;
 	threadId: string;
 	id: string;
@@ -22,14 +29,11 @@ export async function emlToDocument(eml: {
 	const emailText: string =
 		email.text ?? NodeHtmlMarkdown.translate(email.html);
 
-	const content = `Subject: ${subject}
-From: ${email.from.text}
+	const fromText = email.from.text;
 
-${emailText}`;
-
-	const metadata: LazyMailReaderMetadata = {
+	const metadata: Omit<LazyMailReaderMetadata, "id"> = {
 		isHtml: Boolean(!email.text),
-		emailText: content,
+		emailText,
 		emailHtml,
 		subject,
 		...(email.from
@@ -60,11 +64,17 @@ ${emailText}`;
 			: {}),
 		date: new Date(email.headers.get("date")),
 		threadId: eml.threadId,
-		id: eml.id,
+		messageId: eml.id,
 	};
 
 	return new Document<LazyMailReaderMetadata>({
-		metadata,
-		pageContent: content,
+		metadata: {
+			...metadata,
+			emailText,
+			id: metadata.messageId,
+		},
+		pageContent: `Subject: ${metadata.subject}\n${
+			fromText ? `From: ${fromText}\n` : ""
+		}${emailText}`,
 	});
 }

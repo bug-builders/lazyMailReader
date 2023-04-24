@@ -1,22 +1,71 @@
 import os
+import math
 import torch
 import logging
 from flask import Flask, request
 import time
 import json
-from sentence_transformers import SentenceTransformer
+from sentence_transformers import SentenceTransformer, CrossEncoder
 
-def import_model():
+loading_question = 'What is the purpose of life?'
+loading_sentence = "The purpose of life is subjective and determined by each individual. Some may believe the purpose of life is to seek knowledge and education, to find happiness and fulfillment, or to live with purpose by helping others."
+
+ml_loading_question = 'Quel est le sens de la vie?'
+ml_loading_sentence = "Le but de la vie est subjectif et déterminé par chaque individu. Certains peuvent croire que le but de la vie est de rechercher la connaissance et l éducation, de trouver le bonheur et l épanouissement, ou de vivre avec un objectif en aidant les autres."
+
+
+def sigmoid(x):
+    return 1 / (1 + math.exp(-x))
+
+def import_embed_model():
     model = SentenceTransformer('sentence-transformers/all-mpnet-base-v2')
-    model.encode(['What is the purpose of life?'])
+    model.encode(loading_sentence)
     return model
 
 
-def run(model, sentences):
+def import_cross_encode_model():
+    model = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-4-v2')
+    model.predict((
+        loading_question,
+        loading_sentence
+    ))
+    return model
+
+def import_ml_cross_encode_model():
+    model = CrossEncoder('nreimers/mmarco-mMiniLMv2-L6-H384-v1')
+    model.predict((
+        loading_question,
+        loading_sentence
+    ))
+    return model
+
+
+def embed(model, sentences):
     result = model.encode(sentences)
     return result.tolist()
 
-embed_model = import_model()
+
+def cross_encode(model, question, sentences):
+    to_cross_encode = []
+    for sentence in sentences:
+        to_cross_encode.append((question, sentence))
+
+    scores = model.predict(to_cross_encode)
+    return list(map(lambda score: sigmoid(score), scores.tolist()))
+
+def ml_cross_encode(model, question, sentences):
+    to_cross_encode = []
+    for sentence in sentences:
+        to_cross_encode.append((question, sentence))
+
+    scores = model.predict(to_cross_encode)
+    return list(map(lambda score: sigmoid(score), scores.tolist()))
+
+
+embed_model = import_embed_model()
+cross_encode_model = import_cross_encode_model()
+ml_cross_encode_model = import_ml_cross_encode_model()
+
 
 def return_device_usage():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -46,6 +95,7 @@ def print_info(logger):
     else:
         logger.info('Not using GPU')
 
+
 def create_app():
     app = Flask(__name__)
 
@@ -66,9 +116,28 @@ def create_app():
         data = request.get_json()
         sentences = data["sentences"]
 
-        return run(embed_model, sentences)
+        return embed(embed_model, sentences)
+
+    @app.route("/cross_encode", methods=["POST"])
+    def cross_encode_route():
+        data = request.get_json()
+        sentences = data["sentences"]
+        question = data["question"]
+
+        return cross_encode(cross_encode_model, question, sentences)
+
+    @app.route("/ml_cross_encode", methods=["POST"])
+    def ml_cross_encode_route():
+        data = request.get_json()
+        sentences = data["sentences"]
+        question = data["question"]
+
+        return ml_cross_encode(ml_cross_encode_model, question, sentences)
+
     return app
 
 
 if __name__ == '__main__':
-    print(embed_model)
+    print(embed(embed_model, [loading_sentence]))
+    print(cross_encode(cross_encode_model, loading_question, [loading_sentence]))
+    print(ml_cross_encode(ml_cross_encode_model, ml_loading_question, [ml_loading_sentence]))

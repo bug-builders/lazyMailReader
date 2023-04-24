@@ -13,7 +13,7 @@ services:
       - 9200:9200
 
   embedding:
-    image: agix/sentence-transformers:all-mpnet-base-v2
+    image: agix/sentence-transformers:all-mpnet-base-v2_ms-marco-MiniLM-L-4-v2_mmarco-mMiniLMv2-L6-H384-v1
     container_name: embedding
     ports:
       - 5000:5000

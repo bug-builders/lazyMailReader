@@ -1,13 +1,11 @@
 import { LazyMailReaderMetadata } from "../../vectorstores/lazyMailReader.js";
-import { emlToDocument } from "./gmail_utils/emlToDocument.js";
+import { emlToDocuments } from "./gmail_utils/emlToDocuments.js";
 import { listEmails } from "./gmail_utils/listEmails.js";
 import fs from "fs";
 import { google } from "googleapis";
 import http from "http";
 import { Document } from "langchain/document";
 import { BaseDocumentLoader } from "langchain/document_loaders/base";
-
-const BATCH_SIZE = 10;
 
 export interface GmailLoaderParams {
 	cachedUserTokenPath?: string;
@@ -62,13 +60,13 @@ export class GmailLoader extends BaseDocumentLoader implements GmailLoaderParams
 			googleEmlPath: this.googleEmlPath,
 		});
 
-		const documents: Awaited<ReturnType<typeof emlToDocument>>[] = [];
+		const allDocuments: Document<LazyMailReaderMetadata>[] = [];
 		for (const eml of emlList) {
-			const document = await emlToDocument(eml);
-			documents.push(document);
+			const document = await emlToDocuments(eml);
+			allDocuments.push(document);
 		}
 
-		return documents;
+		return allDocuments;
 	}
 
 	public async getUserEmailAddress() {
@@ -138,7 +136,6 @@ export class GmailLoader extends BaseDocumentLoader implements GmailLoaderParams
 						return this.notFound(res);
 					}
 					const url = new URL(`http://127.0.0.1:${this.port}${req.url}`);
-					console.log(url);
 
 					if (url.pathname !== "/oauth2callback") {
 						return this.notFound(res);

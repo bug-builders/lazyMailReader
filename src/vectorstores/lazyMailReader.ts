@@ -15,6 +15,9 @@ const mapping: Record<string, MappingProperty> = {
 	id: {
 		type: "keyword",
 	},
+	messageId: {
+		type: "keyword",
+	},
 	ccAddress: {
 		type: "keyword",
 	},
@@ -66,15 +69,33 @@ export type LazyMailReaderMetadata = {
 	fromName?: string[];
 	emailText: string;
 	emailHtml: string;
+	messageId: string;
 	subject: string;
 };
 
+type CrossEncoder = (
+	query: string,
+	sentences: string[],
+	multiLang: boolean,
+) => Promise<number[]>;
 export class LazyMailReaderVectorStore extends VectorStore {
 	private readonly client: Client;
+	private readonly crossEncode?: CrossEncoder;
+	private readonly multiLang: boolean;
 
-	constructor(embeddings: Embeddings, args: { client: Client }) {
+	constructor(
+		embeddings: Embeddings & {
+			crossEncode?: CrossEncoder;
+		},
+		args: {
+			client: Client;
+			multiLang?: boolean;
+		},
+	) {
 		super(embeddings, args);
 		this.client = args.client;
+		this.crossEncode = embeddings.crossEncode;
+		this.multiLang = args.multiLang ?? false;
 	}
 
 	async addDocuments(
@@ -142,7 +163,16 @@ export class LazyMailReaderVectorStore extends VectorStore {
 			index: INDEX,
 			size: k,
 			_source: {
-				includes: ["emailText"],
+				includes: [
+					"emailText",
+					"date",
+					"threadId",
+					"id",
+					"subject",
+					"fromAddress",
+					"fromName",
+					"messageId",
+				],
 			},
 			query: {
 				script_score: {
@@ -158,23 +188,9 @@ export class LazyMailReaderVectorStore extends VectorStore {
 													},
 												},
 											},
-											{
-												match: {
-													subject: {
-														query: filter.query,
-													},
-												},
-											},
 										],
 								  }
 								: {}),
-							filter: {
-								term: {
-									isHtml: {
-										value: false,
-									},
-								},
-							},
 						},
 					},
 					script: {
@@ -195,12 +211,28 @@ export class LazyMailReaderVectorStore extends VectorStore {
 			},
 		});
 
-		return hits.hits.map((hit) => [
+		if (!this.crossEncode || !filter?.query) {
+			return hits.hits.map((hit) => [
+				new Document<LazyMailReaderMetadata>({
+					pageContent: hit._source?.emailText ?? "",
+					metadata: hit._source,
+				}),
+				hit._score ?? 0,
+			]);
+		}
+
+		const sentences = hits.hits.map((hit) => hit._source?.emailText ?? "");
+		const scores = await this.crossEncode(
+			filter.query,
+			sentences,
+			this.multiLang,
+		);
+		return hits.hits.map((hit, i) => [
 			new Document<LazyMailReaderMetadata>({
 				pageContent: hit._source?.emailText ?? "",
 				metadata: hit._source,
 			}),
-			hit._score ?? 0,
+			scores.at(i) ?? 0,
 		]);
 	}
 
@@ -274,17 +306,6 @@ export class LazyMailReaderVectorStore extends VectorStore {
 		const store = new LazyMailReaderVectorStore(embeddings, args);
 		await store.client.cat.indices({ index: INDEX });
 		return store;
-	}
-
-	private buildMetadataTerms(
-		filter?: object,
-	): { term: Record<string, unknown> }[] {
-		if (filter == null) return [];
-		const result = [];
-		for (const [key, value] of Object.entries(filter)) {
-			result.push({ term: { [`metadata.${key}`]: value } });
-		}
-		return result;
 	}
 
 	async doesIndexExist(): Promise<boolean> {
