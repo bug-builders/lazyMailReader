@@ -23,6 +23,7 @@ import {
 	HumanChatMessage,
 } from "langchain/schema";
 import { TokenTextSplitter } from "langchain/text_splitter";
+import { clearInterval } from "timers";
 
 const THINKING = "_Thinking..._";
 
@@ -60,33 +61,43 @@ export async function handleQuestion(
 		metadataSenders(question),
 	]);
 
-	await postOrUpdateMessage({
-		ts,
-		channel,
-		slackClient,
-		text: `_Recherche d'emails ayant pour sujet: ${subject}${
-			dates.startingDate || dates.endingDate
-				? `Sur la période ${dates.startingDate} - ${dates.endingDate}`
-				: ""
-		}${senders ? `Envoyé par ${JSON.stringify(senders)}` : ""}_`,
-		threadTs,
-	});
+	let dotTimes = 3;
 
-	const threadReplies = await slackClient.conversations.replies({
-		ts: threadTs,
-		channel,
-	});
+	const dotInterval = setInterval(async () => {
+		await postOrUpdateMessage({
+			ts,
+			channel,
+			slackClient,
+			text: `_Recherche d'emails ayant pour sujet: ${subject}_
+${
+	dates.startingDate || dates.endingDate
+		? `_Sur la période ${dates.startingDate} - ${dates.endingDate}_`
+		: ""
+}
+${senders ? `_Envoyés par ${senders.join(" ou ")}` : ""}_
+_${".".repeat(dotTimes)}_
+`,
+			threadTs,
+		});
 
-	const pastMessages: BaseChatMessage[] = (
-		threadReplies.messages?.slice(0, -1) ?? []
-	).map((message) => {
-		if (message.bot_id) {
-			return new AIChatMessage(message.text ?? "");
-		}
-		return new HumanChatMessage(message.text ?? "");
-	});
+		dotTimes += 1;
+	}, 2000);
 
 	try {
+		const threadReplies = await slackClient.conversations.replies({
+			ts: threadTs,
+			channel,
+		});
+
+		const pastMessages: BaseChatMessage[] = (
+			threadReplies.messages?.slice(0, -1) ?? []
+		).map((message) => {
+			if (message.bot_id) {
+				return new AIChatMessage(message.text ?? "");
+			}
+			return new HumanChatMessage(message.text ?? "");
+		});
+
 		const splitter = new TokenTextSplitter({
 			encodingName: "cl100k_base",
 			chunkSize: 512,
@@ -164,6 +175,8 @@ Ton but est de lire ces emails puis de répondre à {displayName} du mieux que t
 			currentDate: new Date().toISOString(),
 		});
 
+		clearInterval(dotInterval);
+
 		const newAIMessage = await chat.call([
 			systemPrompt,
 			...inputDocuments.map((document) => ({
@@ -222,6 +235,7 @@ ${[...uniqueMailSources.entries()]
 	.join("\n\n")}`,
 		});
 	} catch (error) {
+		clearInterval(dotInterval);
 		await postOrUpdateMessage({
 			ts,
 			channel,
