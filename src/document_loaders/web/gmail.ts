@@ -139,7 +139,11 @@ export class GmailLoader extends BaseDocumentLoader implements GmailLoaderParams
 				} catch {}
 
 				const server = http.createServer(
-					wrapHandleOauthCallback(this.getGoogleOauth2Client(), resolve),
+					wrapHandleOauthCallback(
+						"You can now close this tab",
+						this.getGoogleOauth2Client(),
+						resolve,
+					),
 				);
 				server.listen(this.port, "127.0.0.1", async () => {
 					console.log(

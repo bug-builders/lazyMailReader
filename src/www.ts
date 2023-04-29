@@ -10,6 +10,7 @@ import { handleQuestion } from "./steps/handleQuestion.js";
 import { indexEmails } from "./steps/indexEmails.js";
 import { setupBot } from "./steps/setupBot.js";
 import { verify } from "./utils/basicCrypto.js";
+import { generateOnePageRouteHandlers } from "./utils/onePageRoute.js";
 import { postOrUpdateMessage } from "./utils/postOrUpdateMessage.js";
 import { setupServices } from "./utils/setupServices.js";
 import { assertExists, assertIsString } from "./utils/typing.js";
@@ -23,10 +24,15 @@ const services = setupServices();
 
 const app = new bolt.App({
 	customRoutes: [
+		...generateOnePageRouteHandlers(services),
 		{
 			method: "GET",
 			path: "/oauth2callback",
 			handler: wrapHandleOauthCallback(
+				readFileSync(
+					join(services.config.ONE_PAGE_DIRECTORY, "/close.html"),
+					"utf-8",
+				),
 				services.googleOauth2Client,
 				async (tokens, state) => {
 					let channel: string | undefined;

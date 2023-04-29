@@ -1,5 +1,7 @@
+import { readFileSync } from "fs";
 import * as google from "googleapis";
 import http from "http";
+import { join } from "path";
 
 function notFound(res: http.ServerResponse<http.IncomingMessage>) {
 	res.statusCode = 404;
@@ -8,6 +10,7 @@ function notFound(res: http.ServerResponse<http.IncomingMessage>) {
 }
 
 export function wrapHandleOauthCallback(
+	staticHtmlAnswer: string,
 	oauth2Client: google.Auth.OAuth2Client,
 	callback: (
 		tokens: { accessToken: string; refreshToken: string },
@@ -51,21 +54,7 @@ export function wrapHandleOauthCallback(
 
 			res.statusCode = 200;
 			res.setHeader("Content-Type", "text/html");
-			res.end(`
-<!DOCTYPE html>
-<html>
-	<head>
-		<title>Authentification OK</title>
-		<script>
-			function closeTab() {
-				window.close();
-			}
-
-			setTimeout(closeTab, 1000);
-		</script>
-	</head>
-	<body></body>
-</html>`);
+			res.end(staticHtmlAnswer);
 
 			callback(cacheTokens, state);
 		} catch (error) {

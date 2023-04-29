@@ -18,6 +18,7 @@ export function setupServices() {
 		SLACK_CLIENT_ID,
 		SLACK_CLIENT_SECRET,
 		SLACK_STATE_SECRET_KEY,
+		ONE_PAGE_DIRECTORY,
 	} = process.env;
 
 	assertExists(GOOGLE_CLIENT_ID, "GOOGLE_CLIENT_ID");
@@ -29,6 +30,7 @@ export function setupServices() {
 	assertExists(SLACK_STATE_SECRET_KEY, "SLACK_STATE_SECRET_KEY");
 	assertExists(SLACK_CLIENT_ID, "SLACK_CLIENT_ID");
 	assertExists(SLACK_CLIENT_SECRET, "SLACK_CLIENT_SECRET");
+	assertExists(ONE_PAGE_DIRECTORY, "ONE_PAGE_DIRECTORY");
 
 	const embedding = new SentenceTransformersEmbeddings({
 		sentenceTransformersUrl: SENTENCE_TRANSFORMERS_URL,
@@ -68,6 +70,7 @@ export function setupServices() {
 			SLACK_CLIENT_ID,
 			SLACK_CLIENT_SECRET,
 			SLACK_STATE_SECRET_KEY,
+			ONE_PAGE_DIRECTORY,
 			userInformationDirectory:
 				process.env.USER_INFORMATION_DIRECTORY ?? "/tmp/",
 		},
