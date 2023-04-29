@@ -4,3 +4,5 @@ export const PROGRESS_PREFIX = "_Work in progress..._\n";
 
 export const MAX_OPENAI_TOKENS = 4096;
 export const MINIMUM_TOKEN_FOR_ANSWER = 512;
+
+export const STATE_EXPIRATION_MS = 60 * 60 * 1000;

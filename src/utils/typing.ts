@@ -14,3 +14,11 @@ export function assertIsString(value: unknown): asserts value is string {
 		throw new Error("value is not of expected string type.");
 	}
 }
+
+export function assertIsNumber(value: unknown): asserts value is number {
+	const isOfExpectedType = typeof value === "number";
+
+	if (!isOfExpectedType) {
+		throw new Error("value is not of expected number type.");
+	}
+}

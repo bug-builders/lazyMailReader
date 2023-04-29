@@ -10,10 +10,15 @@ import { handleQuestion } from "./steps/handleQuestion.js";
 import { indexEmails } from "./steps/indexEmails.js";
 import { setupBot } from "./steps/setupBot.js";
 import { verify } from "./utils/basicCrypto.js";
+import { STATE_EXPIRATION_MS } from "./utils/constant.js";
 import { generateOnePageRouteHandlers } from "./utils/onePageRoute.js";
 import { postOrUpdateMessage } from "./utils/postOrUpdateMessage.js";
 import { setupServices } from "./utils/setupServices.js";
-import { assertExists, assertIsString } from "./utils/typing.js";
+import {
+	assertExists,
+	assertIsNumber,
+	assertIsString,
+} from "./utils/typing.js";
 import bolt from "@slack/bolt";
 import { readFileSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
@@ -23,6 +28,9 @@ export type WebClient = typeof app.client;
 const services = setupServices();
 
 const app = new bolt.App({
+	installerOptions: {
+		stateVerification: false,
+	},
 	customRoutes: [
 		...generateOnePageRouteHandlers(services),
 		{
@@ -43,10 +51,15 @@ const app = new bolt.App({
 							team,
 							user,
 							channel: verifiedChannel,
+							now,
 						} = verify(services.config.SECRET_KEY, state);
 						assertIsString(team);
 						assertIsString(user);
 						assertIsString(verifiedChannel);
+						assertIsNumber(now);
+						if (Date.now() - now > STATE_EXPIRATION_MS) {
+							throw new Error("State expired");
+						}
 						channel = verifiedChannel;
 						const userInformation = retrieveUserInformation(services, {
 							team,

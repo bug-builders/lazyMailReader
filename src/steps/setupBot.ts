@@ -37,7 +37,12 @@ Merci!
 			access_type: "offline",
 			prompt: "consent",
 			scope: ["https://www.googleapis.com/auth/gmail.readonly"],
-			state: sign(services.config.SECRET_KEY, { team, user, channel }),
+			state: sign(services.config.SECRET_KEY, {
+				team,
+				user,
+				channel,
+				iat: Date.now(),
+			}),
 		});
 		await slackClient.chat.postMessage({
 			text: `J'ai maintenant besoin d'accéder à tes emails. Peux tu t'authentifier sur ce lien s'il te plait ?\n ${authUrl}`,
