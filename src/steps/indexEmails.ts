@@ -55,7 +55,9 @@ export async function indexEmails(
 
 				lastUpdateAt = Date.now();
 			}
-			await services.lazyMailVectorStore.addDocuments(currentDocumentBatch);
+			await services.lazyMailVectorStore.addDocuments(currentDocumentBatch, {
+				userId: `${team}-${user}`,
+			});
 		}
 
 		const userInformation = retrieveUserInformation(services, { team, user });

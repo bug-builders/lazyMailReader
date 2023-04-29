@@ -6,7 +6,6 @@ import { assertExists } from "../utils/typing.js";
 import { WebClient } from "../www.js";
 import { downloadEmails } from "./downloadEmails.js";
 import { indexEmails } from "./indexEmails.js";
-import bolt from "@slack/bolt";
 
 export async function setupBot(
 	services: Services,
@@ -20,7 +19,7 @@ export async function setupBot(
 	const userInformation = retrieveUserInformation(services, { team, user });
 	if (!userInformation.openAIKey) {
 		await slackClient.chat.postMessage({
-			text: `Bonjour ${userInformation.displayName ?? "camarade"}!
+			text: `Bonjour ${userInformation.displayName || "camarade"}!
 
 Nous allons d'abord terminer de m'installer.
 Afin de pouvoir continuer la discussion j'ai besoin d'une clé OpenAI...

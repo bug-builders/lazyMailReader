@@ -7,7 +7,6 @@ import {
 } from "./vectorstores/lazyMailReader.js";
 import { encoding_for_model } from "@dqbd/tiktoken";
 import { Client } from "@elastic/elasticsearch";
-import { OpenAI, PromptTemplate } from "langchain";
 import { BaseCallbackHandler, CallbackManager } from "langchain/callbacks";
 import { ChatOpenAI } from "langchain/chat_models/openai";
 import { Document } from "langchain/document";
@@ -201,7 +200,9 @@ async function askQuestion({
 
 		for (let i = 0; i < documents.length; i += BATCH_SIZE) {
 			const currentDocumentBatch = documents.slice(i, i + BATCH_SIZE);
-			await lazyMailVectorStore.addDocuments(currentDocumentBatch);
+			await lazyMailVectorStore.addDocuments(currentDocumentBatch, {
+				userId: "test",
+			});
 		}
 	}
 

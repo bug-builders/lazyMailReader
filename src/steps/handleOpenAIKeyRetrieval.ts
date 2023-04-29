@@ -2,7 +2,11 @@ import { bindChatToSlackMessage } from "../utils/bindChatToSlackMessage.js";
 import { assertExists } from "../utils/typing.js";
 import { WebClient } from "../www.js";
 import bolt from "@slack/bolt";
-import { HumanChatMessage, SystemChatMessage } from "langchain/schema";
+import {
+	AIChatMessage,
+	HumanChatMessage,
+	SystemChatMessage,
+} from "langchain/schema";
 
 const openAIKeyRegExp = new RegExp("(sk-[0-9A-Za-z]+)");
 
@@ -47,8 +51,16 @@ export async function handleOpenAIKeyRetrieval({
 			new SystemChatMessage(
 				`Tu es l'assistant personnel des emails de ${displayName}. Tu as une liste d'emails pouvant contenir la réponse à la question de ${displayName}. Ton but est de lire puis de répondre à ${displayName} du mieux que tu peux.`,
 			),
+			new HumanChatMessage("Bonjour !"),
+			new AIChatMessage(`Bonjour !
+Nous allons d'abord terminer de m'installer.
+Afin de pouvoir continuer la discussion j'ai besoin d'une clé OpenAI...
+Si tu peux juste me la coller là, ça me permettra d'être plus intelligent :D
+Merci!`),
+			new HumanChatMessage("Voici la clé: sk_ultAMrcUJo57kNDalZGo-nXn6L7YSAK2"),
+			new AIChatMessage(initialText),
 			new HumanChatMessage(
-				`Bonjour, je suis ${displayName}. Je suis ravis que tu puisse m'aider à retrouver des informations dans mes emails. Peux tu d'abord me dire si tu vas bien et me raconter une annectode sur l'inventeur des emails ?`,
+				`Présentes toi et raconte moi directement une anectode sur l'inventeur des emails sans me rappeler que je te l'ai demandé.`,
 			),
 		]);
 		return openAIKey;

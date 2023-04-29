@@ -104,12 +104,17 @@ export class LazyMailReaderVectorStore extends VectorStore {
 
 	async addDocuments(
 		documents: Document<LazyMailReaderMetadata>[],
+		options?: { userId: string },
 	): Promise<void> {
 		await this.ensureIndexExists();
+		if (!options?.userId) {
+			throw new Error("Missing userId");
+		}
 		const newDocuments =
 			await LazyMailReaderVectorStore.filterExistingDocuments({
 				client: this.client,
 				documents,
+				userId: options?.userId,
 			});
 		const texts = newDocuments.map(({ pageContent }) => pageContent);
 		return this.addVectors(
@@ -156,6 +161,26 @@ export class LazyMailReaderVectorStore extends VectorStore {
 			return;
 		}
 		await this.client.bulk({ refresh: true, index: INDEX, operations });
+	}
+
+	async countDocuments({ userId }: { userId: string }) {
+		await this.ensureIndexExists();
+		const result = await this.client.count({
+			index: INDEX,
+			query: {
+				bool: {
+					filter: {
+						term: {
+							userId: {
+								value: userId,
+							},
+						},
+					},
+				},
+			},
+		});
+
+		return result.count;
 	}
 
 	async similaritySearchVectorWithScore(
@@ -255,7 +280,7 @@ export class LazyMailReaderVectorStore extends VectorStore {
 		texts: string[],
 		metadatas: object[] | object,
 		embeddings: Embeddings,
-		args: { client: Client },
+		args: { client: Client; userId: string },
 	): Promise<LazyMailReaderVectorStore> {
 		const documents = texts.map((text, idx) => {
 			const metadata = Array.isArray(metadatas) ? metadatas[idx] : metadatas;
@@ -268,7 +293,12 @@ export class LazyMailReaderVectorStore extends VectorStore {
 	static async filterExistingDocuments({
 		client,
 		documents,
-	}: { client: Client; documents: Document<LazyMailReaderMetadata>[] }) {
+		userId,
+	}: {
+		client: Client;
+		documents: Document<LazyMailReaderMetadata>[];
+		userId: string;
+	}) {
 		const idList = documents.map((document) => document.metadata.id);
 		const { hits } = await client.search<{ id: string }>({
 			index: INDEX,
@@ -277,8 +307,21 @@ export class LazyMailReaderVectorStore extends VectorStore {
 				includes: ["id"],
 			},
 			query: {
-				terms: {
-					id: idList,
+				bool: {
+					filter: [
+						{
+							terms: {
+								id: idList,
+							},
+						},
+						{
+							term: {
+								userId: {
+									value: userId,
+								},
+							},
+						},
+					],
 				},
 			},
 		});
@@ -302,11 +345,12 @@ export class LazyMailReaderVectorStore extends VectorStore {
 	static async fromDocuments(
 		docs: Document<LazyMailReaderMetadata>[],
 		embeddings: Embeddings,
-		args: { client: Client },
+		args: { client: Client; userId: string },
 	): Promise<LazyMailReaderVectorStore> {
 		const newDocuments = await this.filterExistingDocuments({
 			client: args.client,
 			documents: docs,
+			userId: args.userId,
 		});
 
 		const store = new LazyMailReaderVectorStore(embeddings, args);

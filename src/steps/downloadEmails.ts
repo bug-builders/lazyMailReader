@@ -11,6 +11,7 @@ import { LazyMailReaderMetadata } from "../vectorstores/lazyMailReader.js";
 import { WebClient } from "../www.js";
 import fs from "fs";
 import { Document } from "langchain/document";
+import { join } from "path";
 
 const TWO_SECONDS = 2 * 1000;
 
@@ -34,7 +35,10 @@ export async function downloadEmails(
 ) {
 	let currentTs = ts;
 	try {
-		const googleEmlPath = `${services.config.userInformationDirectory}/${team}-${user}/eml-files`;
+		const googleEmlPath = join(
+			services.config.userInformationDirectory,
+			`/${team}-${user}/eml-files`,
+		);
 
 		const cacheExists = fs.existsSync(googleEmlPath);
 		if (!cacheExists) {

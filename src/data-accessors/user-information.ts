@@ -1,7 +1,9 @@
 import { Services } from "../utils/setupServices.js";
 import fs from "fs";
+import { join } from "path";
 
 export type UserInformation = {
+	channel?: string;
 	displayName?: string;
 	accessToken?: string;
 	refreshToken?: string;
@@ -15,7 +17,10 @@ export function retrieveUserInformation(
 	services: Services,
 	{ team, user }: { team: string; user: string },
 ): UserInformation {
-	const userInformationFile = `${services.config.userInformationDirectory}/${team}-${user}.json`;
+	const userInformationFile = join(
+		services.config.userInformationDirectory,
+		`/${team}-${user}.json`,
+	);
 
 	try {
 		return JSON.parse(fs.readFileSync(userInformationFile, "utf-8"));
@@ -31,7 +36,10 @@ export function saveUserInformation(
 		userInformation,
 	}: { team: string; user: string; userInformation: UserInformation },
 ) {
-	const userInformationFile = `${services.config.userInformationDirectory}/${team}-${user}.json`;
+	const userInformationFile = join(
+		services.config.userInformationDirectory,
+		`/${team}-${user}.json`,
+	);
 
 	fs.writeFileSync(
 		userInformationFile,
