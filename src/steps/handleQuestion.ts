@@ -1,5 +1,8 @@
 import { UserInformation } from "../data-accessors/user-information.js";
-import { I18N } from "../i18n/index.js";
+import { metadataDates } from "../prompts/metadata-dates-fr.js";
+import { metadataQuestion } from "../prompts/metadata-question-fr.js";
+import { metadataSenders } from "../prompts/metadata-senders-fr.js";
+import { metadataSubject } from "../prompts/metadata-subject-fr.js";
 import { bindChatToSlackMessage } from "../utils/bindChatToSlackMessage.js";
 import {
 	MAX_OPENAI_TOKENS,
@@ -9,10 +12,8 @@ import { postOrUpdateMessage } from "../utils/postOrUpdateMessage.js";
 import { Services } from "../utils/setupServices.js";
 import { LazyMailReaderMetadata } from "../vectorstores/lazyMailReader.js";
 import { WebClient } from "../www.js";
-import { UnknownError } from "@slack/bolt";
 import { Document } from "langchain/document";
 import {
-	ChatPromptTemplate,
 	HumanMessagePromptTemplate,
 	SystemMessagePromptTemplate,
 } from "langchain/prompts";
@@ -45,6 +46,32 @@ export async function handleQuestion(
 		slackClient: WebClient;
 	},
 ) {
+	const ts = await postOrUpdateMessage({
+		channel,
+		slackClient,
+		text: THINKING,
+		threadTs,
+	});
+
+	const [dates, subject, generatedQuestion, senders] = await Promise.all([
+		metadataDates(question),
+		metadataSubject(question),
+		metadataQuestion(question),
+		metadataSenders(question),
+	]);
+
+	await postOrUpdateMessage({
+		ts,
+		channel,
+		slackClient,
+		text: `_Recherche d'emails ayant pour sujet: ${subject}${
+			dates.startingDate || dates.endingDate
+				? `Sur la période ${dates.startingDate} - ${dates.endingDate}`
+				: ""
+		}${senders ? `Envoyé par ${JSON.stringify(senders)}` : ""}_`,
+		threadTs,
+	});
+
 	const threadReplies = await slackClient.conversations.replies({
 		ts: threadTs,
 		channel,
@@ -59,13 +86,6 @@ export async function handleQuestion(
 		return new HumanChatMessage(message.text ?? "");
 	});
 
-	const ts = await postOrUpdateMessage({
-		channel,
-		slackClient,
-		text: THINKING,
-		threadTs,
-	});
-
 	try {
 		const splitter = new TokenTextSplitter({
 			encodingName: "cl100k_base",
@@ -77,7 +97,10 @@ export async function handleQuestion(
 			question,
 			50,
 			{
-				query: question,
+				query: generatedQuestion ?? question,
+				dates,
+				subject,
+				senders,
 				userId: `${team}-${user}`,
 			},
 		)) as Document<LazyMailReaderMetadata>[];

@@ -1,6 +1,10 @@
 import { GmailLoader } from "./document_loaders/web/gmail.js";
 import { SentenceTransformersEmbeddings } from "./embeddings/sentenceTransformers.js";
 import { I18N } from "./i18n/index.js";
+import { metadataDates } from "./prompts/metadata-dates-fr.js";
+import { metadataQuestion } from "./prompts/metadata-question-fr.js";
+import { metadataSenders } from "./prompts/metadata-senders-fr.js";
+import { metadataSubject } from "./prompts/metadata-subject-fr.js";
 import {
 	LazyMailReaderMetadata,
 	LazyMailReaderVectorStore,
@@ -68,9 +72,23 @@ async function askQuestion({
 		rl.question(discussion.length === 0 ? `${initialQuestion}\n` : "", resolve);
 	});
 
+	const [dates, subject, generatedQuestion, senders] = await Promise.all([
+		metadataDates(question),
+		metadataSubject(question),
+		metadataQuestion(question),
+		metadataSenders(question),
+	]);
+
+	console.log(
+		JSON.stringify([dates, subject, generatedQuestion, senders], null, 2),
+	);
+
 	const docs = (await lazyMailVectorStore.similaritySearch(question, 50, {
-		query: question,
+		query: generatedQuestion ?? question,
 		userId: "test",
+		dates,
+		subject,
+		senders,
 	})) as Document<LazyMailReaderMetadata>[];
 
 	const inputDocuments: {

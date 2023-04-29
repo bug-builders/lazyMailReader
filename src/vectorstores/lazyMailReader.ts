@@ -265,11 +265,18 @@ export class LazyMailReaderVectorStore extends VectorStore {
 	async similaritySearchVectorWithScore(
 		query: number[],
 		k: number,
-		filter: { userId: string } & Record<string, string>,
+		filter: {
+			userId: string;
+			query: string;
+			dates: { startingDate: string | null; endingDate: string | null };
+			subject: string;
+			senders: string[] | null;
+		} & Record<string, string>,
 	): Promise<[Document<LazyMailReaderMetadata>, number][]> {
 		if (!filter.userId) {
 			throw new Error("Missing userId");
 		}
+
 		const { hits } = await this.client.search<LazyMailReaderMetadata>({
 			index: INDEX,
 			size: k,
@@ -290,16 +297,34 @@ export class LazyMailReaderVectorStore extends VectorStore {
 				script_score: {
 					query: {
 						bool: {
-							filter: {
-								term: {
-									userId: {
-										value: filter.userId,
+							filter: [
+								{
+									term: {
+										userId: {
+											value: filter.userId,
+										},
 									},
 								},
-							},
-							...(filter.query
-								? {
-										should: [
+								...(filter.dates.endingDate || filter.dates.startingDate
+									? [
+											{
+												range: {
+													date: {
+														...(filter.dates.startingDate
+															? { gte: filter.dates.startingDate }
+															: {}),
+														...(filter.dates.endingDate
+															? { lte: filter.dates.endingDate }
+															: {}),
+													},
+												},
+											},
+									  ]
+									: []),
+							],
+							should: [
+								...(filter.query
+									? [
 											{
 												match: {
 													emailText: {
@@ -308,9 +333,37 @@ export class LazyMailReaderVectorStore extends VectorStore {
 													},
 												},
 											},
-										],
-								  }
-								: {}),
+									  ]
+									: []),
+								...(filter.subject
+									? [
+											{
+												match: {
+													subject: {
+														boost: 2,
+														query: filter.subject,
+														fuzziness: "AUTO",
+													},
+												},
+											},
+									  ]
+									: []),
+								...(filter.senders
+									? filter.senders.map((sender) => ({
+											multi_match: {
+												boost: 3,
+												query: sender.toLowerCase(),
+												fields: [
+													"ccAddress.search",
+													"ccName.search",
+													"fromAddress.search^2",
+													"fromName.search^2",
+												],
+												fuzziness: "AUTO",
+											},
+									  }))
+									: []),
+							],
 						},
 					},
 					script: {
