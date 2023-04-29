@@ -1,3 +1,4 @@
+import { assertExists } from "../../../utils/typing.js";
 import fs from "fs";
 import { Common, google } from "googleapis";
 
@@ -6,14 +7,17 @@ export async function listEmails({
 	refreshToken,
 	accessToken,
 	googleEmlPath = "./eml-files",
+	progressCallback,
 }: {
 	oauth2Client: Common.OAuth2Client;
 	refreshToken: string;
 	accessToken: string;
 	googleEmlPath?: string;
+	progressCallback?: ({
+		index,
+		total,
+	}: { index: number; total: number }) => Promise<void>;
 }) {
-	console.log("Fetching emails...");
-
 	oauth2Client.setCredentials({
 		refresh_token: refreshToken,
 		access_token: accessToken,
@@ -29,13 +33,16 @@ export async function listEmails({
 
 	const messages = response.data.messages;
 
-	if (!messages) {
-		throw new Error("No messages");
-	}
+	assertExists(messages, "messages");
 	const emlList: { filename: string; threadId: string; id: string }[] = [];
 	let i = 0;
 	for (const message of messages) {
-		console.log(`Downloading email [${i + 1}/${messages.length}]`);
+		if (progressCallback) {
+			await progressCallback({
+				index: i,
+				total: messages.length,
+			});
+		}
 		i += 1;
 		if (!message.id || !message.threadId) {
 			continue;

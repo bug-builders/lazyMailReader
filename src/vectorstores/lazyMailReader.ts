@@ -6,6 +6,9 @@ import { VectorStore } from "langchain/vectorstores/base";
 
 const INDEX = "lazy_mail_reader";
 const mapping: Record<string, MappingProperty> = {
+	userId: {
+		type: "keyword",
+	},
 	date: {
 		type: "date",
 	},
@@ -57,6 +60,7 @@ const mapping: Record<string, MappingProperty> = {
 };
 
 export type LazyMailReaderMetadata = {
+	userId: string;
 	isHtml: boolean;
 	date: Date;
 	threadId: string;
@@ -157,13 +161,17 @@ export class LazyMailReaderVectorStore extends VectorStore {
 	async similaritySearchVectorWithScore(
 		query: number[],
 		k: number,
-		filter?: Record<string, string> | undefined,
+		filter: { userId: string } & Record<string, string>,
 	): Promise<[Document<LazyMailReaderMetadata>, number][]> {
+		if (!filter.userId) {
+			throw new Error("Missing userId");
+		}
 		const { hits } = await this.client.search<LazyMailReaderMetadata>({
 			index: INDEX,
 			size: k,
 			_source: {
 				includes: [
+					"userId",
 					"emailText",
 					"date",
 					"threadId",
@@ -178,7 +186,14 @@ export class LazyMailReaderVectorStore extends VectorStore {
 				script_score: {
 					query: {
 						bool: {
-							...(filter?.query
+							filter: {
+								term: {
+									userId: {
+										value: filter.userId,
+									},
+								},
+							},
+							...(filter.query
 								? {
 										should: [
 											{

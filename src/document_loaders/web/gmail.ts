@@ -1,5 +1,6 @@
 import { LazyMailReaderMetadata } from "../../vectorstores/lazyMailReader.js";
 import { emlToDocuments } from "./gmail_utils/emlToDocuments.js";
+import { wrapHandleOauthCallback } from "./gmail_utils/handOauthCallback.js";
 import { listEmails } from "./gmail_utils/listEmails.js";
 import fs from "fs";
 import { google } from "googleapis";
@@ -46,7 +47,16 @@ export class GmailLoader extends BaseDocumentLoader implements GmailLoaderParams
 		this.googleEmlPath = googleEmlPath;
 	}
 
-	public async load(): Promise<Document<LazyMailReaderMetadata>[]> {
+	public async load(options?: {
+		userId: string;
+		progressCallback?: ({
+			index,
+			total,
+		}: { index: number; total: number }) => Promise<void>;
+	}): Promise<Document<LazyMailReaderMetadata>[]> {
+		if (!options?.userId) {
+			throw new Error("Missing userId");
+		}
 		if (!this.accessToken || !this.refreshToken) {
 			const { accessToken, refreshToken } = await this.getAuthorization();
 			this.accessToken = accessToken;
@@ -54,6 +64,7 @@ export class GmailLoader extends BaseDocumentLoader implements GmailLoaderParams
 		}
 
 		const emlList = await listEmails({
+			progressCallback: options?.progressCallback,
 			oauth2Client: this.getGoogleOauth2Client(),
 			accessToken: this.accessToken,
 			refreshToken: this.refreshToken,
@@ -61,8 +72,10 @@ export class GmailLoader extends BaseDocumentLoader implements GmailLoaderParams
 		});
 
 		const allDocuments: Document<LazyMailReaderMetadata>[] = [];
+		let i = 0;
 		for (const eml of emlList) {
-			const document = await emlToDocuments(eml);
+			const document = await emlToDocuments(options.userId, eml);
+			i = +1;
 			allDocuments.push(document);
 		}
 
@@ -108,12 +121,6 @@ export class GmailLoader extends BaseDocumentLoader implements GmailLoaderParams
 		return authUrl;
 	}
 
-	private async notFound(res: http.ServerResponse<http.IncomingMessage>) {
-		res.statusCode = 404;
-		res.setHeader("Content-Type", "text/plain");
-		res.end("Not found.\n");
-	}
-
 	private async getAuthorization() {
 		return new Promise<{ refreshToken: string; accessToken: string }>(
 			(resolve) => {
@@ -131,55 +138,9 @@ export class GmailLoader extends BaseDocumentLoader implements GmailLoaderParams
 					return;
 				} catch {}
 
-				const server = http.createServer(async (req, res) => {
-					if (!req.url || req.method !== "GET") {
-						return this.notFound(res);
-					}
-					const url = new URL(`http://127.0.0.1:${this.port}${req.url}`);
-
-					if (url.pathname !== "/oauth2callback") {
-						return this.notFound(res);
-					}
-
-					const code = url.searchParams.get("code");
-					if (!code) {
-						return this.notFound(res);
-					}
-
-					const oauth2Client = this.getGoogleOauth2Client();
-
-					try {
-						const { tokens } = await oauth2Client.getToken(code);
-						if (!tokens.access_token) {
-							throw new Error("No access token");
-						}
-						if (!tokens.refresh_token) {
-							throw new Error("No refresh token");
-						}
-
-						const cacheTokens = {
-							accessToken: tokens.access_token,
-							refreshToken: tokens.refresh_token,
-						};
-						fs.writeFileSync(
-							this.cachedUserTokenPath,
-							JSON.stringify(cacheTokens, null, 2),
-						);
-						res.statusCode = 200;
-						res.setHeader("Content-Type", "text/plain");
-						res.end("Tokens received. You can close this window.\n");
-						server.close();
-						resolve(cacheTokens);
-					} catch (error) {
-						console.error("Error getting tokens:", error);
-						res.statusCode = 500;
-						res.setHeader("Content-Type", "text/plain");
-						res.end(
-							`Error getting tokens: ${error}. Check the console for more information.\n`,
-						);
-					}
-				});
-
+				const server = http.createServer(
+					wrapHandleOauthCallback(this.getGoogleOauth2Client(), resolve),
+				);
 				server.listen(this.port, "127.0.0.1", async () => {
 					console.log(
 						`Oauth callback server running at http://127.0.0.1:${this.port}/`,

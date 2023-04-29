@@ -1,5 +1,6 @@
 import { GmailLoader } from "./document_loaders/web/gmail.js";
 import { SentenceTransformersEmbeddings } from "./embeddings/sentenceTransformers.js";
+import { I18N } from "./i18n/index.js";
 import {
 	LazyMailReaderMetadata,
 	LazyMailReaderVectorStore,
@@ -19,25 +20,6 @@ import { TokenTextSplitter } from "langchain/text_splitter";
 import readline from "readline";
 
 const enc = encoding_for_model("gpt-3.5-turbo");
-
-const I18N = {
-	en: {
-		systemPrompt:
-			"You will be provided with a list of emails to use as context. Your goal is to answer the user question based on this context.",
-		myEmail: "My email is",
-		initialQuestion: "What do you want to know from your emails?",
-		fetchEmailsQuestion: "Do you want to fetch your last emails",
-		currentDate: "Current date time is",
-	},
-	fr: {
-		systemPrompt:
-			"Voici une liste d'e-mails reçu par un utilisateur. Votre objectif est de répondre à la question de l'utilisateur en vous basant sur ces emails.",
-		myEmail: "Mon addresse email est",
-		initialQuestion: "Que souhaitez vous demander à vos emails?",
-		fetchEmailsQuestion: "Voulez vous récupérer vos derniers emails?",
-		currentDate: "Nous somme le",
-	},
-};
 
 const multiLang = !process.env.LANG?.startsWith("en");
 
@@ -89,6 +71,7 @@ async function askQuestion({
 
 	const docs = (await lazyMailVectorStore.similaritySearch(question, 50, {
 		query: question,
+		userId: "test",
 	})) as Document<LazyMailReaderMetadata>[];
 
 	const inputDocuments: {
@@ -210,11 +193,14 @@ async function askQuestion({
 	});
 
 	if (fetchEmails.toLowerCase().startsWith("y")) {
-		const documents = await gmailLoader.load();
+		const documents = await gmailLoader.load({
+			userId: "test",
+			progressCallback: async ({ index, total }) =>
+				console.log(`[${index}/${total}] reading mails`),
+		});
 
 		for (let i = 0; i < documents.length; i += BATCH_SIZE) {
 			const currentDocumentBatch = documents.slice(i, i + BATCH_SIZE);
-			console.log(`Indexing ${currentDocumentBatch.length} emails...`);
 			await lazyMailVectorStore.addDocuments(currentDocumentBatch);
 		}
 	}

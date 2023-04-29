@@ -12,11 +12,14 @@ export function generateSHA256(toHash: string): string {
 	return hash.digest("hex");
 }
 
-export async function emlToDocuments(eml: {
-	filename: string;
-	threadId: string;
-	id: string;
-}) {
+export async function emlToDocuments(
+	userId: string,
+	eml: {
+		filename: string;
+		threadId: string;
+		id: string;
+	},
+) {
 	const email = await new EmlParser(fs.createReadStream(eml.filename)).parseEml(
 		{
 			ignoreEmbedded: true,
@@ -32,6 +35,7 @@ export async function emlToDocuments(eml: {
 	const fromText = email.from.text;
 
 	const metadata: Omit<LazyMailReaderMetadata, "id"> = {
+		userId,
 		isHtml: Boolean(!email.text),
 		emailText,
 		emailHtml,
