@@ -50,8 +50,22 @@ export function wrapHandleOauthCallback(
 			};
 
 			res.statusCode = 200;
-			res.setHeader("Content-Type", "text/plain");
-			res.end("Tokens received. You can close this window.\n");
+			res.setHeader("Content-Type", "text/html");
+			res.end(`
+<!DOCTYPE html>
+<html>
+	<head>
+		<title>Authentification OK</title>
+		<script>
+			function closeTab() {
+				window.close();
+			}
+
+			setTimeout(closeTab, 1000);
+		</script>
+	</head>
+	<body></body>
+</html>`);
 
 			callback(cacheTokens, state);
 		} catch (error) {

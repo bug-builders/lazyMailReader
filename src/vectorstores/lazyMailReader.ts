@@ -1,10 +1,39 @@
 import { Client } from "@elastic/elasticsearch";
-import { MappingProperty } from "@elastic/elasticsearch/lib/api/types.js";
+import {
+	IndicesIndexSettings,
+	MappingProperty,
+} from "@elastic/elasticsearch/lib/api/types.js";
 import { Document } from "langchain/document";
 import { Embeddings } from "langchain/embeddings/base";
 import { VectorStore } from "langchain/vectorstores/base";
 
 const INDEX = "lazy_mail_reader";
+const settings: IndicesIndexSettings = {
+	analysis: {
+		tokenizer: {
+			ngram_tokenizer: {
+				type: "ngram",
+				// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+				//@ts-ignore
+				min_gram: "2",
+				// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+				//@ts-ignore
+				max_gram: "20",
+				token_chars: ["letter", "digit", "punctuation", "symbol"],
+			},
+		},
+		analyzer: {
+			ngram_analyzer: {
+				filter: ["lowercase"],
+				type: "custom",
+				tokenizer: "ngram_tokenizer",
+			},
+		},
+	},
+	// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+	//@ts-ignore
+	max_ngram_diff: "30",
+};
 const mapping: Record<string, MappingProperty> = {
 	userId: {
 		type: "keyword",
@@ -23,21 +52,63 @@ const mapping: Record<string, MappingProperty> = {
 	},
 	ccAddress: {
 		type: "keyword",
+		fields: {
+			search: {
+				type: "text",
+				analyzer: "ngram_analyzer",
+				search_analyzer: "keyword",
+			},
+		},
 	},
 	ccName: {
 		type: "keyword",
+		fields: {
+			search: {
+				type: "text",
+				analyzer: "ngram_analyzer",
+				search_analyzer: "keyword",
+			},
+		},
 	},
 	toAddress: {
 		type: "keyword",
+		fields: {
+			search: {
+				type: "text",
+				analyzer: "ngram_analyzer",
+				search_analyzer: "keyword",
+			},
+		},
 	},
 	toName: {
 		type: "keyword",
+		fields: {
+			search: {
+				type: "text",
+				analyzer: "ngram_analyzer",
+				search_analyzer: "keyword",
+			},
+		},
 	},
 	fromAddress: {
 		type: "keyword",
+		fields: {
+			search: {
+				type: "text",
+				analyzer: "ngram_analyzer",
+				search_analyzer: "keyword",
+			},
+		},
 	},
 	fromName: {
 		type: "keyword",
+		fields: {
+			search: {
+				type: "text",
+				analyzer: "ngram_analyzer",
+				search_analyzer: "keyword",
+			},
+		},
 	},
 	emailHtml: {
 		type: "text",
@@ -47,6 +118,13 @@ const mapping: Record<string, MappingProperty> = {
 	},
 	subject: {
 		type: "text",
+		fields: {
+			search: {
+				type: "text",
+				analyzer: "ngram_analyzer",
+				search_analyzer: "keyword",
+			},
+		},
 	},
 	isHtml: {
 		type: "boolean",
@@ -133,6 +211,7 @@ export class LazyMailReaderVectorStore extends VectorStore {
 		}
 
 		await this.client.indices.create({
+			settings,
 			mappings: {
 				properties: mapping,
 			},
@@ -225,6 +304,7 @@ export class LazyMailReaderVectorStore extends VectorStore {
 												match: {
 													emailText: {
 														query: filter.query,
+														fuzziness: "AUTO",
 													},
 												},
 											},

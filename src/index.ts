@@ -20,10 +20,10 @@ import readline from "readline";
 
 const enc = encoding_for_model("gpt-3.5-turbo");
 
-const multiLang = !process.env.LANG?.startsWith("en");
+const multiLang = process.env.USER_LANG !== "en";
 
 function selectLang(lang?: string) {
-	if (lang?.startsWith("fr")) {
+	if (lang === "fr") {
 		return I18N.fr;
 	}
 
@@ -36,7 +36,7 @@ const {
 	initialQuestion,
 	fetchEmailsQuestion,
 	currentDate,
-} = selectLang(process.env.LANG);
+} = selectLang(process.env.USER_LANG);
 
 const MAX_OPENAI_TOKENS = 4096;
 const MINIMUM_TOKEN_FOR_ANSWER = 512;
