@@ -224,8 +224,6 @@ async function askQuestion({
 		}
 	}
 
-	const emailAddress = await gmailLoader.getUserEmailAddress();
-
 	const handleToken: BaseCallbackHandler = {
 		name: "handleToken",
 		copy: () => handleToken,
@@ -242,7 +240,6 @@ async function askQuestion({
 	while (true) {
 		discussion = await askQuestion({
 			chat,
-			emailAddress: emailAddress ?? undefined,
 			lazyMailVectorStore,
 			rl,
 			embedding,

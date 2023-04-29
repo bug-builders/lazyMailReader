@@ -155,7 +155,6 @@ _${".".repeat(dotTimes)}_
 
 		const systemPromptTemplate = SystemMessagePromptTemplate.fromTemplate(
 			`Tu es l'assistant personnel des emails de {displayName} <{emailAddress}>.
-Tu as une liste d'emails pouvant contenir la réponse à la question de {displayName}.
 Ton but est de lire ces emails puis de répondre à {displayName} du mieux que tu peux.`,
 		);
 
@@ -166,12 +165,19 @@ Ton but est de lire ces emails puis de répondre à {displayName} du mieux que t
 
 		const humanInitialMessageTemplate =
 			HumanMessagePromptTemplate.fromTemplate(`Je suis {displayName} <{emailAddress}>, nous somme le {currentDate}.
-		{question}`);
+{question}`);
 
 		const humanInitialMessage = await humanInitialMessageTemplate.format({
 			displayName: userInformation.displayName,
 			emailAddress: userInformation.emailAddress,
-			question,
+			question: `${question}
+
+Voici une liste d'emails pouvant contenir la réponse à ma demande.
+"""
+${inputDocuments.map((document) => document.pageContent).join('\n"""\n"""\n')}
+"""
+Tu peux maintenant répondre:
+`,
 			currentDate: new Date().toISOString(),
 		});
 
@@ -179,14 +185,16 @@ Ton but est de lire ces emails puis de répondre à {displayName} du mieux que t
 
 		const newAIMessage = await chat.call([
 			systemPrompt,
-			...inputDocuments.map((document) => ({
-				_getType: () => "system",
-				text: document.pageContent ?? "",
-				name: "email",
-			})),
 			pastMessages.length === 0
 				? humanInitialMessage
-				: new HumanChatMessage(question),
+				: new HumanChatMessage(`${question}
+
+Voici une liste d'emails pouvant contenir la réponse à ma demande.
+"""
+${inputDocuments.map((document) => document.pageContent).join('\n"""\n"""\n')}
+"""
+Tu peux maintenant répondre:
+`),
 		]);
 
 		const answerScores = await services.embedding.crossEncode(
