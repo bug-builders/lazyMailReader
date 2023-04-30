@@ -75,8 +75,8 @@ ${
 		: ""
 }
 ${senders ? `_Envoyés par ${senders.join(" ou ")}` : ""}_
-_${".".repeat(dotTimes)}_
-`,
+${question ? `_${generatedQuestion}_` : ""}
+_${".".repeat(dotTimes)}_`,
 			threadTs,
 		});
 
@@ -155,7 +155,7 @@ _${".".repeat(dotTimes)}_
 
 		const systemPromptTemplate = SystemMessagePromptTemplate.fromTemplate(
 			`Tu es l'assistant personnel des emails de {displayName} <{emailAddress}>.
-Ton but est de lire ces emails puis de répondre à {displayName} du mieux que tu peux.`,
+Ton but est de lire ses emails puis de répondre à {displayName} du mieux que tu peux.`,
 		);
 
 		const systemPrompt = await systemPromptTemplate.format({
@@ -176,7 +176,9 @@ Voici une liste d'emails pouvant contenir la réponse à ma demande.
 """
 ${inputDocuments.map((document) => document.pageContent).join('\n"""\n"""\n')}
 """
-Tu peux maintenant répondre:
+---
+Tu peux maintenant répondre à la demande:
+${question}
 `,
 			currentDate: new Date().toISOString(),
 		});
@@ -193,7 +195,9 @@ Voici une liste d'emails pouvant contenir la réponse à ma demande.
 """
 ${inputDocuments.map((document) => document.pageContent).join('\n"""\n"""\n')}
 """
-Tu peux maintenant répondre:
+---
+Tu peux maintenant répondre à la demande:
+${question}
 `),
 		]);
 
