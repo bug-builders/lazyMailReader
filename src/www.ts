@@ -51,13 +51,13 @@ const app = new bolt.App({
 							team,
 							user,
 							channel: verifiedChannel,
-							now,
+							iat,
 						} = verify(services.config.SECRET_KEY, state);
 						assertIsString(team);
 						assertIsString(user);
 						assertIsString(verifiedChannel);
-						assertIsNumber(now);
-						if (Date.now() - now > STATE_EXPIRATION_MS) {
+						assertIsNumber(iat);
+						if (Date.now() - iat > STATE_EXPIRATION_MS) {
 							throw new Error("State expired");
 						}
 						channel = verifiedChannel;
