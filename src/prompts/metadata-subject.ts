@@ -59,7 +59,7 @@ ${request}
 			const parsedResponse = JSON.parse(lastLine);
 			return parsedResponse.subject;
 		} catch {
-			console.error("Wrong json", lastLine);
+			console.error("Wrong json subject", lastLine);
 		}
 	}
 	return "";

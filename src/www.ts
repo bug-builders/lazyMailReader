@@ -1,26 +1,22 @@
 import {
 	UserInformation,
+	deleteUserInformation,
 	retrieveUserInformation,
 	saveUserInformation,
 } from "./data-accessors/user-information.js";
-import { wrapHandleOauthCallback } from "./document_loaders/web/gmail_utils/handOauthCallback.js";
+import { wrapHandleOauthCallback } from "./document_loaders/web/utils/wrapHandleOauthCallback.js";
 import { downloadEmails } from "./steps/downloadEmails.js";
+import { handleOauthCallback } from "./steps/handleOauthCallback.js";
 import { handleOpenAIKeyRetrieval } from "./steps/handleOpenAIKeyRetrieval.js";
 import { handleQuestion } from "./steps/handleQuestion.js";
 import { indexEmails } from "./steps/indexEmails.js";
 import { setupBot } from "./steps/setupBot.js";
-import { verify } from "./utils/basicCrypto.js";
-import { STATE_EXPIRATION_MS } from "./utils/constant.js";
 import { generateOnePageRouteHandlers } from "./utils/onePageRoute.js";
 import { postOrUpdateMessage } from "./utils/postOrUpdateMessage.js";
 import { setupServices } from "./utils/setupServices.js";
-import {
-	assertExists,
-	assertIsNumber,
-	assertIsString,
-} from "./utils/typing.js";
+import { assertExists, assertIsString } from "./utils/typing.js";
 import bolt from "@slack/bolt";
-import { readFileSync, rmSync, writeFileSync } from "fs";
+import { readFileSync, rmSync, rmdirSync, writeFileSync } from "fs";
 import { join } from "path";
 
 export type WebClient = typeof app.client;
@@ -36,99 +32,30 @@ const app = new bolt.App({
 		{
 			method: "GET",
 			path: "/oauth2callback",
-			handler: wrapHandleOauthCallback(
-				readFileSync(
+			handler: wrapHandleOauthCallback({
+				services,
+				pathname: "/oauth2callback",
+				staticHtmlAnswer: readFileSync(
 					join(services.config.ONE_PAGE_DIRECTORY, "/close.html"),
 					"utf-8",
 				),
-				services.googleOauth2Client,
-				async (tokens, state) => {
-					let channel: string | undefined;
-					let slackClient: WebClient | undefined;
-					try {
-						assertExists(state, "state");
-						const {
-							team,
-							user,
-							channel: verifiedChannel,
-							iat,
-						} = verify(services.config.SECRET_KEY, state);
-						assertIsString(team);
-						assertIsString(user);
-						assertIsString(verifiedChannel);
-						assertIsNumber(iat);
-						if (Date.now() - iat > STATE_EXPIRATION_MS) {
-							throw new Error("State expired");
-						}
-						channel = verifiedChannel;
-						const userInformation = retrieveUserInformation(services, {
-							team,
-							user,
-						});
-						assertExists(userInformation, "userInformation");
-
-						userInformation.accessToken = tokens.accessToken;
-						userInformation.refreshToken = tokens.refreshToken;
-						saveUserInformation(services, { team, user, userInformation });
-
-						const storePath = join(
-							services.config.userInformationDirectory,
-							`/${team}.json`,
-						);
-						const botInstallation: bolt.Installation = JSON.parse(
-							readFileSync(storePath, "utf-8"),
-						);
-
-						const botToken = botInstallation.bot?.token;
-						assertExists(botToken, "botToken");
-
-						const authenticatedApp = new bolt.App({
-							signingSecret: services.config.SLACK_SIGNING_SECRET,
-							token: botToken,
-						});
-						slackClient = authenticatedApp.client;
-
-						await slackClient.chat.postMessage({
-							token: botToken,
-							text: "Parfait, j'ai tout ce qu'il me faut !\nLaisse moi quelques minutes pour lire tes mails et je reviens vers toi dès que je suis prêt...",
-							channel,
-						});
-
-						const { documents, ts } = await downloadEmails(services, {
-							channel,
-							slackClient,
-							team,
-							tokens,
-							user,
-						});
-
-						const { ts: currentTs } = await indexEmails(services, {
-							channel,
-							documents,
-							slackClient,
-							team,
-							user,
-							ts,
-						});
-
-						await postOrUpdateMessage({
-							ts: currentTs,
-							channel,
-							slackClient,
-							text: "Et bien je crois que j'ai tout lu... Que souhaiterais tu savoir?",
-						});
-					} catch (error) {
-						console.error(error);
-						if (channel && slackClient) {
-							await postOrUpdateMessage({
-								channel,
-								slackClient,
-								text: "Je suis désolé, quelque chose s'est mal passé... Je vais contacter le support pour savoir ce qu'il s'est passé",
-							});
-						}
-					}
-				},
-			),
+				codeToTokens: (code) => services.gmailLoader.codeToTokens(code),
+				callback: handleOauthCallback,
+			}),
+		},
+		{
+			method: "GET",
+			path: "/ms-oauth2callback",
+			handler: wrapHandleOauthCallback({
+				services,
+				pathname: "/ms-oauth2callback",
+				staticHtmlAnswer: readFileSync(
+					join(services.config.ONE_PAGE_DIRECTORY, "/close.html"),
+					"utf-8",
+				),
+				codeToTokens: (code) => services.msLoader.codeToTokens(code),
+				callback: handleOauthCallback,
+			}),
 		},
 	],
 	clientId: services.config.SLACK_CLIENT_ID,
@@ -184,16 +111,18 @@ app.event("app_home_opened", async ({ context, client, event }) => {
 	});
 
 	const syncEmailBlock: (bolt.Block | bolt.KnownBlock)[] =
-		userInformation.lastEmailsDownloadedAt
+		userInformation.accessToken && userInformation.refreshToken
 			? [
 					{
 						type: "section",
 						block_id: "sync_text",
 						text: {
 							type: "mrkdwn",
-							text: `Dernière synchronisation des emails: ${new Date(
-								userInformation.lastEmailsDownloadedAt,
-							).toLocaleDateString()}`,
+							text: userInformation.lastEmailsDownloadedAt
+								? `Dernière synchronisation des emails: ${new Date(
+										userInformation.lastEmailsDownloadedAt,
+								  ).toLocaleString("fr-FR")}`
+								: "Emails non synchronisé",
 						},
 					},
 					{
@@ -207,6 +136,14 @@ app.event("app_home_opened", async ({ context, client, event }) => {
 									text: "Synchroniser",
 								},
 								action_id: "sync_emails",
+							},
+							{
+								type: "button",
+								text: {
+									type: "plain_text",
+									text: "⚠️ Effacer mes données ⚠️",
+								},
+								action_id: "delete_emails",
 							},
 						],
 					},
@@ -257,6 +194,36 @@ app.event("app_home_opened", async ({ context, client, event }) => {
 	});
 });
 
+app.action("delete_emails", async ({ ack, client, context, body }) => {
+	assertExists(context.teamId, "context.teamId");
+	await ack();
+
+	const userInformation = retrieveUserInformation(services, {
+		team: context.teamId,
+		user: body.user.id,
+	});
+
+	await services.lazyMailVectorStore.deleteDocuments({
+		userId: `${context.teamId}-${body.user.id}`,
+	});
+
+	const emlPath = join(
+		services.config.userInformationDirectory,
+		`/${context.teamId}-${body.user.id}/eml-files`,
+	);
+
+	rmSync(emlPath, { recursive: true, force: true });
+	deleteUserInformation(services, { user: body.user.id, team: context.teamId });
+
+	if (userInformation.channel) {
+		await postOrUpdateMessage({
+			channel: userInformation.channel,
+			slackClient: client,
+			text: "Et voilà, j'ai tout oublié à propos de tes emails. N'hésites pas à revenir profiter de mes services !",
+		});
+	}
+});
+
 app.action("sync_emails", async ({ ack, client, context, body }) => {
 	assertExists(context.teamId, "context.teamId");
 
@@ -265,10 +232,11 @@ app.action("sync_emails", async ({ ack, client, context, body }) => {
 		user: body.user.id,
 	});
 
-	const { channel, accessToken, refreshToken } = userInformation;
+	const { channel, accessToken, refreshToken, loaderType } = userInformation;
 	assertExists(channel, "channel");
 	assertExists(accessToken, "accessToken");
 	assertExists(refreshToken, "refreshToken");
+	assertExists(loaderType, "loaderType");
 
 	await ack();
 
@@ -283,6 +251,7 @@ app.action("sync_emails", async ({ ack, client, context, body }) => {
 		slackClient: client,
 		team: context.teamId,
 		tokens: { accessToken, refreshToken },
+		loaderType,
 		user: body.user.id,
 	});
 
@@ -370,6 +339,7 @@ app.message(async ({ message, client }) => {
 		lastIndexationDoneAt,
 		openAIKey,
 		refreshToken,
+		loaderType,
 	} = userInformation;
 
 	assertExists(accessToken, "accessToken");
@@ -379,6 +349,22 @@ app.message(async ({ message, client }) => {
 	assertExists(lastEmailsDownloadedAt, "lastEmailsDownloadedAt");
 	assertExists(lastIndexationDoneAt, "lastIndexationDoneAt");
 	assertExists(openAIKey, "openAIKey");
+	assertExists(loaderType, "loaderType");
+
+	const lastQueryAt = new Date().toISOString();
+
+	const finalUserInformation = {
+		loaderType,
+		lastQueryAt,
+		channel,
+		accessToken,
+		displayName,
+		emailAddress,
+		lastEmailsDownloadedAt,
+		lastIndexationDoneAt,
+		openAIKey,
+		refreshToken,
+	};
 
 	await handleQuestion(services, {
 		team,
@@ -387,16 +373,13 @@ app.message(async ({ message, client }) => {
 		threadTs: threadTs ?? userMessageTs,
 		question: text,
 		slackClient: client,
-		userInformation: {
-			channel,
-			accessToken,
-			displayName,
-			emailAddress,
-			lastEmailsDownloadedAt,
-			lastIndexationDoneAt,
-			openAIKey,
-			refreshToken,
-		},
+		userInformation: finalUserInformation,
+	});
+
+	saveUserInformation(services, {
+		userInformation: finalUserInformation,
+		team,
+		user,
 	});
 });
 

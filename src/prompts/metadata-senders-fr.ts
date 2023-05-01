@@ -40,7 +40,7 @@ Cette demande concerne la génération d'une réponse à un email que l'utilisat
 
 Demande: 
 """
-I've a flat tire and need to follow-up with the insurance company. Can you retrieve the contract number of my insurance company?
+J'ai un pneu crevé et besoin de faire un suivi auprès de la compagnie d'assurance. Peux-tu me trouver le numéro de contrat de ma compagnie d'assurance ?
 """
 Cette demande concerne l'obtention du numéro de contrat de la compagnie d'assurance de l'utilisateur. Il n'y a pas d'indice sur le nom de la compagnie d'assurance.
 {"expediteurs": null}`;
@@ -61,7 +61,7 @@ ${request}
 			const parsedResponse = JSON.parse(lastLine);
 			return parsedResponse.expediteurs;
 		} catch {
-			console.error("Wrong json", lastLine);
+			console.error("Wrong json senders fr", lastLine);
 		}
 	}
 	return null;

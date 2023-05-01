@@ -18,8 +18,10 @@
 		"typescript": "^5.0.4"
 	},
 	"dependencies": {
+		"@azure/msal-node": "^1.17.1",
 		"@dqbd/tiktoken": "^1.0.6",
 		"@elastic/elasticsearch": "^8.7.0",
+		"@microsoft/microsoft-graph-client": "^3.0.5",
 		"@slack/bolt": "^3.13.0",
 		"@types/luxon": "^3.3.0",
 		"@types/set-cookie-parser": "^2.4.2",

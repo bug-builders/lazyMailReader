@@ -8,10 +8,23 @@ export type UserInformation = {
 	accessToken?: string;
 	refreshToken?: string;
 	openAIKey?: string;
+	lastQueryAt?: string; // ISO8601
 	lastEmailsDownloadedAt?: string; // ISO8601
 	lastIndexationDoneAt?: string; // ISO8601
 	emailAddress?: string;
+	loaderType?: string;
 };
+
+export function deleteUserInformation(
+	services: Services,
+	{ team, user }: { team: string; user: string },
+) {
+	const userInformationFile = join(
+		services.config.userInformationDirectory,
+		`/${team}-${user}.json`,
+	);
+	fs.rmSync(userInformationFile);
+}
 
 export function retrieveUserInformation(
 	services: Services,

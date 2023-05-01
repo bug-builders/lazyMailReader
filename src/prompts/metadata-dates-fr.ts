@@ -51,7 +51,7 @@ ${request}
 			const parsedResponse = JSON.parse(lastLine);
 			return parsedResponse;
 		} catch {
-			console.error("Wrong json", lastLine);
+			console.error("Wrong json date fr", lastLine);
 		}
 	}
 	return { startingDate: null, endingDate: null };

@@ -1,7 +1,4 @@
-import { readFileSync } from "fs";
-import * as google from "googleapis";
 import http from "http";
-import { join } from "path";
 
 function notFound(res: http.ServerResponse<http.IncomingMessage>) {
 	res.statusCode = 404;
@@ -9,14 +6,25 @@ function notFound(res: http.ServerResponse<http.IncomingMessage>) {
 	res.end("Not found.\n");
 }
 
-export function wrapHandleOauthCallback(
-	staticHtmlAnswer: string,
-	oauth2Client: google.Auth.OAuth2Client,
+export function wrapHandleOauthCallback<T>({
+	services,
+	pathname,
+	staticHtmlAnswer,
+	codeToTokens,
+	callback,
+}: {
+	services?: T;
+	pathname: string;
+	staticHtmlAnswer: string;
+	codeToTokens: (
+		code: string,
+	) => Promise<{ accessToken: string; refreshToken: string }>;
 	callback: (
 		tokens: { accessToken: string; refreshToken: string },
 		state: null | string,
-	) => void,
-) {
+		services?: T,
+	) => void;
+}) {
 	return async function handleOauthCallback(
 		req: http.IncomingMessage,
 		res: http.ServerResponse<http.IncomingMessage> & {
@@ -28,7 +36,7 @@ export function wrapHandleOauthCallback(
 		}
 		const url = new URL(`http://127.0.0.1${req.url}`);
 
-		if (url.pathname !== "/oauth2callback") {
+		if (url.pathname !== pathname) {
 			return notFound(res);
 		}
 
@@ -38,25 +46,13 @@ export function wrapHandleOauthCallback(
 		}
 
 		try {
-			const { tokens } = await oauth2Client.getToken(code);
+			const tokens = await codeToTokens(code);
 			const state = url.searchParams.get("state");
-			if (!tokens.access_token) {
-				throw new Error("No access token");
-			}
-			if (!tokens.refresh_token) {
-				throw new Error("No refresh token");
-			}
-
-			const cacheTokens = {
-				accessToken: tokens.access_token,
-				refreshToken: tokens.refresh_token,
-			};
-
 			res.statusCode = 200;
 			res.setHeader("Content-Type", "text/html");
 			res.end(staticHtmlAnswer);
 
-			callback(cacheTokens, state);
+			callback(tokens, state, services);
 		} catch (error) {
 			console.error("Error getting tokens:", error);
 			res.statusCode = 500;

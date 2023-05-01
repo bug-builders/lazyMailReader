@@ -1,7 +1,7 @@
 import { LazyMailReaderMetadata } from "../../vectorstores/lazyMailReader.js";
-import { emlToDocuments } from "./gmail_utils/emlToDocuments.js";
-import { wrapHandleOauthCallback } from "./gmail_utils/handOauthCallback.js";
-import { listEmails } from "./gmail_utils/listEmails.js";
+import { emlToDocuments } from "./utils/emlToDocuments.js";
+import { gmailListEmails } from "./utils/gmailListEmails.js";
+import { wrapHandleOauthCallback } from "./utils/wrapHandleOauthCallback.js";
 import fs from "fs";
 import { google } from "googleapis";
 import http from "http";
@@ -9,66 +9,45 @@ import { Document } from "langchain/document";
 import { BaseDocumentLoader } from "langchain/document_loaders/base";
 
 export interface GmailLoaderParams {
-	cachedUserTokenPath?: string;
-	accessToken?: string;
-	refreshToken?: string;
-	oauthCallbackPort?: number;
-	googleEmlPath?: string;
 	googleClientId: string;
 	googleClientSecret: string;
+	googleRedirectUri: string;
 }
 
 export class GmailLoader extends BaseDocumentLoader implements GmailLoaderParams {
-	public cachedUserTokenPath: string;
-	public accessToken?: string;
-	public refreshToken?: string;
-	public port: number;
 	public googleClientId: string;
 	public googleClientSecret: string;
-	public googleEmlPath?: string;
+	public googleRedirectUri: string;
 
 	constructor({
-		cachedUserTokenPath,
-		accessToken,
-		refreshToken,
-		oauthCallbackPort,
 		googleClientId,
 		googleClientSecret,
-		googleEmlPath,
+		googleRedirectUri,
 	}: GmailLoaderParams) {
 		super();
-		this.cachedUserTokenPath =
-			cachedUserTokenPath ?? "/tmp/lazy-mail-reader-credentials.json";
-		this.accessToken = accessToken;
-		this.refreshToken = refreshToken;
-		this.port = oauthCallbackPort ?? 3000;
 		this.googleClientId = googleClientId;
 		this.googleClientSecret = googleClientSecret;
-		this.googleEmlPath = googleEmlPath;
+		this.googleRedirectUri = googleRedirectUri;
 	}
 
 	public async load(options?: {
 		userId: string;
+		tokens: { accessToken: string; refreshToken: string };
+		emlPath: string;
 		progressCallback?: ({
 			index,
 			total,
 		}: { index: number; total: number }) => Promise<void>;
 	}): Promise<Document<LazyMailReaderMetadata>[]> {
-		if (!options?.userId) {
-			throw new Error("Missing userId");
+		if (!options?.userId || !options?.tokens || !options?.emlPath) {
+			throw new Error("Missing options");
 		}
-		if (!this.accessToken || !this.refreshToken) {
-			const { accessToken, refreshToken } = await this.getAuthorization();
-			this.accessToken = accessToken;
-			this.refreshToken = refreshToken;
-		}
-
-		const emlList = await listEmails({
+		const emlList = await gmailListEmails({
 			progressCallback: options?.progressCallback,
 			oauth2Client: this.getGoogleOauth2Client(),
-			accessToken: this.accessToken,
-			refreshToken: this.refreshToken,
-			googleEmlPath: this.googleEmlPath,
+			accessToken: options.tokens.accessToken,
+			refreshToken: options.tokens.refreshToken,
+			googleEmlPath: options.emlPath,
 		});
 
 		const allDocuments: Document<LazyMailReaderMetadata>[] = [];
@@ -82,17 +61,17 @@ export class GmailLoader extends BaseDocumentLoader implements GmailLoaderParams
 		return allDocuments;
 	}
 
-	public async getUserEmailAddress() {
-		if (!this.accessToken || !this.refreshToken) {
-			const { accessToken, refreshToken } = await this.getAuthorization();
-			this.accessToken = accessToken;
-			this.refreshToken = refreshToken;
-		}
-
+	public async getUserEmailAddress({
+		refreshToken,
+		accessToken,
+	}: {
+		accessToken: string;
+		refreshToken: string;
+	}) {
 		const oauth2Client = this.getGoogleOauth2Client();
 		oauth2Client.setCredentials({
-			refresh_token: this.refreshToken,
-			access_token: this.accessToken,
+			refresh_token: refreshToken,
+			access_token: accessToken,
 		});
 
 		const gmail = google.gmail({ version: "v1", auth: oauth2Client });
@@ -101,32 +80,62 @@ export class GmailLoader extends BaseDocumentLoader implements GmailLoaderParams
 	}
 
 	private getGoogleOauth2Client() {
-		const REDIRECT_URI = `http://localhost:${this.port}/oauth2callback`;
-
 		return new google.auth.OAuth2(
 			this.googleClientId,
 			this.googleClientSecret,
-			REDIRECT_URI,
+			this.googleRedirectUri,
 		);
 	}
 
-	private async getAuthorizationUrl() {
+	public async getAuthorizationUrl(state?: string) {
 		const oauth2Client = this.getGoogleOauth2Client();
 
 		const authUrl = oauth2Client.generateAuthUrl({
 			access_type: "offline",
+			prompt: "consent",
 			scope: ["https://www.googleapis.com/auth/gmail.readonly"],
+			...(state ? { state } : {}),
 		});
 
 		return authUrl;
 	}
 
-	private async getAuthorization() {
+	public async refreshTokens(refreshToken: string) {
+		const oauth2Client = this.getGoogleOauth2Client();
+		oauth2Client.setCredentials({
+			refresh_token: refreshToken,
+		});
+
+		const result = await oauth2Client.refreshAccessToken();
+
+		return {
+			accessToken: result.credentials.access_token,
+			refreshToken: result.credentials.refresh_token ?? refreshToken,
+		};
+	}
+
+	public async codeToTokens(code: string) {
+		const oauth2Client = this.getGoogleOauth2Client();
+		const { tokens } = await oauth2Client.getToken(code);
+		if (!tokens.access_token) {
+			throw new Error("No access token");
+		}
+		if (!tokens.refresh_token) {
+			throw new Error("No refresh token");
+		}
+
+		return {
+			accessToken: tokens.access_token,
+			refreshToken: tokens.refresh_token,
+		};
+	}
+
+	public async getAuthorization(cachedUserTokenPath: string) {
 		return new Promise<{ refreshToken: string; accessToken: string }>(
 			(resolve) => {
 				try {
 					const tokens = JSON.parse(
-						fs.readFileSync(this.cachedUserTokenPath, "utf-8"),
+						fs.readFileSync(cachedUserTokenPath, "utf-8"),
 					);
 					if (!tokens.accessToken) {
 						throw new Error("No access token");
@@ -139,15 +148,16 @@ export class GmailLoader extends BaseDocumentLoader implements GmailLoaderParams
 				} catch {}
 
 				const server = http.createServer(
-					wrapHandleOauthCallback(
-						"You can now close this tab",
-						this.getGoogleOauth2Client(),
-						resolve,
-					),
+					wrapHandleOauthCallback({
+						pathname: "/oauth2callback",
+						staticHtmlAnswer: "You can now close this tab",
+						codeToTokens: this.codeToTokens,
+						callback: resolve,
+					}),
 				);
-				server.listen(this.port, "127.0.0.1", async () => {
+				server.listen(3000, "127.0.0.1", async () => {
 					console.log(
-						`Oauth callback server running at http://127.0.0.1:${this.port}/`,
+						"Oauth callback server running at http://127.0.0.1:3000}/",
 					);
 					const authUrl = await this.getAuthorizationUrl();
 					console.log(

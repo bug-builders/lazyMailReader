@@ -2,7 +2,7 @@ import { assertExists } from "../../../utils/typing.js";
 import fs from "fs";
 import { Common, google } from "googleapis";
 
-export async function listEmails({
+export async function gmailListEmails({
 	oauth2Client,
 	refreshToken,
 	accessToken,

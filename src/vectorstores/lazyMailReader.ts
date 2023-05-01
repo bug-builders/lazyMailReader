@@ -262,6 +262,24 @@ export class LazyMailReaderVectorStore extends VectorStore {
 		return result.count;
 	}
 
+	async deleteDocuments({ userId }: { userId: string }) {
+		await this.ensureIndexExists();
+		await this.client.deleteByQuery({
+			index: INDEX,
+			query: {
+				bool: {
+					filter: {
+						term: {
+							userId: {
+								value: userId,
+							},
+						},
+					},
+				},
+			},
+		});
+	}
+
 	async similaritySearchVectorWithScore(
 		query: number[],
 		k: number,
@@ -276,6 +294,96 @@ export class LazyMailReaderVectorStore extends VectorStore {
 		if (!filter.userId) {
 			throw new Error("Missing userId");
 		}
+
+		const esQuery = {
+			script_score: {
+				query: {
+					bool: {
+						filter: [
+							{
+								term: {
+									userId: {
+										value: filter.userId,
+									},
+								},
+							},
+							...(filter.dates.endingDate || filter.dates.startingDate
+								? [
+										{
+											range: {
+												date: {
+													...(filter.dates.startingDate
+														? { gte: filter.dates.startingDate }
+														: {}),
+													...(filter.dates.endingDate
+														? { lte: filter.dates.endingDate }
+														: {}),
+												},
+											},
+										},
+								  ]
+								: []),
+						],
+						should: [
+							...(filter.query
+								? [
+										{
+											match: {
+												emailText: {
+													query: filter.query,
+													fuzziness: "AUTO",
+												},
+											},
+										},
+								  ]
+								: []),
+							...(filter.subject
+								? [
+										{
+											match: {
+												subject: {
+													boost: 2,
+													query: filter.subject,
+													fuzziness: "AUTO",
+												},
+											},
+										},
+								  ]
+								: []),
+							...(filter.senders
+								? filter.senders.map((sender) => ({
+										multi_match: {
+											boost: 3,
+											query: sender.toLowerCase(),
+											fields: [
+												"ccAddress.search",
+												"ccName.search",
+												"fromAddress.search^2",
+												"fromName.search^2",
+											],
+											fuzziness: "AUTO",
+										},
+								  }))
+								: []),
+						],
+					},
+				},
+				script: {
+					source: [
+						"(_score + 1.0)",
+						`(cosineSimilarity(params.queryVector, 'embedding') + 1.0)`,
+						"(decayDateExp(params.origin, params.scale, params.offset, params.decay, doc['date'].value) + 1.0)",
+					].join(" * "),
+					params: {
+						queryVector: query,
+						origin: new Date().toISOString(),
+						scale: "30d",
+						decay: 0.5,
+						offset: "0",
+					},
+				},
+			},
+		};
 
 		const { hits } = await this.client.search<LazyMailReaderMetadata>({
 			index: INDEX,
@@ -293,95 +401,7 @@ export class LazyMailReaderVectorStore extends VectorStore {
 					"messageId",
 				],
 			},
-			query: {
-				script_score: {
-					query: {
-						bool: {
-							filter: [
-								{
-									term: {
-										userId: {
-											value: filter.userId,
-										},
-									},
-								},
-								...(filter.dates.endingDate || filter.dates.startingDate
-									? [
-											{
-												range: {
-													date: {
-														...(filter.dates.startingDate
-															? { gte: filter.dates.startingDate }
-															: {}),
-														...(filter.dates.endingDate
-															? { lte: filter.dates.endingDate }
-															: {}),
-													},
-												},
-											},
-									  ]
-									: []),
-							],
-							should: [
-								...(filter.query
-									? [
-											{
-												match: {
-													emailText: {
-														query: filter.query,
-														fuzziness: "AUTO",
-													},
-												},
-											},
-									  ]
-									: []),
-								...(filter.subject
-									? [
-											{
-												match: {
-													subject: {
-														boost: 2,
-														query: filter.subject,
-														fuzziness: "AUTO",
-													},
-												},
-											},
-									  ]
-									: []),
-								...(filter.senders
-									? filter.senders.map((sender) => ({
-											multi_match: {
-												boost: 3,
-												query: sender.toLowerCase(),
-												fields: [
-													"ccAddress.search",
-													"ccName.search",
-													"fromAddress.search^2",
-													"fromName.search^2",
-												],
-												fuzziness: "AUTO",
-											},
-									  }))
-									: []),
-							],
-						},
-					},
-					script: {
-						source: [
-							"(_score + 1.0)",
-							`(cosineSimilarity(params.queryVector, 'embedding') + 1.0)`,
-							"(decayDateExp(params.origin, params.scale, params.offset, params.decay, doc['date'].value) + 1.0)",
-						].join(" * "),
-						params: {
-							queryVector: query,
-							origin: new Date().toISOString(),
-							scale: "30d",
-							decay: 0.5,
-							offset: "0",
-						},
-					},
-				},
-			},
+			query: esQuery,
 		});
 
 		if (!this.crossEncode || !filter?.query) {
@@ -489,26 +509,5 @@ export class LazyMailReaderVectorStore extends VectorStore {
 		const store = new LazyMailReaderVectorStore(embeddings, args);
 		await store.addDocuments(newDocuments);
 		return store;
-	}
-
-	static async fromExistingIndex(
-		embeddings: Embeddings,
-		args: { client: Client },
-	): Promise<LazyMailReaderVectorStore> {
-		const store = new LazyMailReaderVectorStore(embeddings, args);
-		await store.client.cat.indices({ index: INDEX });
-		return store;
-	}
-
-	async doesIndexExist(): Promise<boolean> {
-		await this.client.cat.indices({ index: INDEX });
-		return true;
-	}
-
-	async deleteIfExists(): Promise<void> {
-		await this.client.indices.delete({
-			index: INDEX,
-			ignore_unavailable: true,
-		});
 	}
 }

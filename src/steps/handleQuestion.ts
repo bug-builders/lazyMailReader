@@ -25,7 +25,13 @@ import {
 import { TokenTextSplitter } from "langchain/text_splitter";
 import { clearInterval } from "timers";
 
-const THINKING = "_Thinking..._";
+const THINKING = "Thinking...";
+
+enum MetadataType {
+	Thinking = "thinking",
+	Sources = "sources",
+	Answer = "answer",
+}
 
 export async function handleQuestion(
 	services: Services,
@@ -47,10 +53,14 @@ export async function handleQuestion(
 		slackClient: WebClient;
 	},
 ) {
-	const ts = await postOrUpdateMessage({
+	const firstTs = await postOrUpdateMessage({
+		metadata: {
+			event_type: MetadataType.Thinking,
+			event_payload: {},
+		},
 		channel,
 		slackClient,
-		text: THINKING,
+		text: `_${THINKING}_`,
 		threadTs,
 	});
 
@@ -61,42 +71,64 @@ export async function handleQuestion(
 		metadataSenders(question),
 	]);
 
-	let dotTimes = 3;
-
-	const dotInterval = setInterval(async () => {
-		await postOrUpdateMessage({
-			ts,
-			channel,
-			slackClient,
-			text: `_Recherche d'emails ayant pour sujet: ${subject}_
+	await postOrUpdateMessage({
+		metadata: {
+			event_type: MetadataType.Thinking,
+			event_payload: {},
+		},
+		ts: firstTs,
+		channel,
+		slackClient,
+		text: `_Recherche d'emails ayant pour sujet: ${subject}_
 ${
 	dates.startingDate || dates.endingDate
 		? `_Sur la période ${dates.startingDate} - ${dates.endingDate}_`
 		: ""
 }
 ${senders ? `_Envoyés par ${senders.join(" ou ")}` : ""}_
-${question ? `_${generatedQuestion}_` : ""}
-_${".".repeat(dotTimes)}_`,
+${question ? `_${generatedQuestion}_` : ""}`,
+		threadTs,
+	});
+
+	const threadReplies = await slackClient.conversations.replies({
+		ts: threadTs,
+		channel,
+	});
+
+	const ts = await postOrUpdateMessage({
+		channel,
+		slackClient,
+		text: THINKING,
+		threadTs,
+	});
+
+	let dotTimes = 1;
+
+	const dotInterval = setInterval(async () => {
+		await postOrUpdateMessage({
+			ts,
+			channel,
+			slackClient,
+			text: `_${THINKING}${".".repeat(dotTimes)}_`,
 			threadTs,
 		});
 
 		dotTimes += 1;
 	}, 2000);
-
 	try {
-		const threadReplies = await slackClient.conversations.replies({
-			ts: threadTs,
-			channel,
-		});
-
-		const pastMessages: BaseChatMessage[] = (
-			threadReplies.messages?.slice(0, -1) ?? []
-		).map((message) => {
-			if (message.bot_id) {
-				return new AIChatMessage(message.text ?? "");
-			}
-			return new HumanChatMessage(message.text ?? "");
-		});
+		const pastMessages: BaseChatMessage[] =
+			threadReplies.messages
+				?.filter(
+					(message) =>
+						message.metadata?.event_type !== MetadataType.Thinking &&
+						message.metadata?.event_type !== MetadataType.Sources,
+				)
+				.map((message) => {
+					if (message.bot_id) {
+						return new AIChatMessage(message.text ?? "");
+					}
+					return new HumanChatMessage(message.text ?? "");
+				}) ?? [];
 
 		const splitter = new TokenTextSplitter({
 			encodingName: "cl100k_base",
@@ -218,13 +250,20 @@ ${question}
 			.sort((a, b) => b.score - a.score)
 			.map((m) => m);
 
-		const uniqueMailSources: Map<string, { subject: string; from: string }> =
-			new Map();
+		const uniqueMailSources: Map<
+			string,
+			{ subject: string; from: string; score: number }
+		> = new Map();
 
 		sources.forEach((source) => {
 			uniqueMailSources.set(
-				`https://mail.google.com/mail/u/0/#inbox/${source.metadata.messageId}`,
+				userInformation.loaderType === "ms"
+					? `https://outlook.office365.com/owa/?ItemID=${encodeURIComponent(
+							source.metadata.messageId,
+					  )}&exvsurl=1&viewmodel=ReadMessageItem`
+					: `https://mail.google.com/mail/u/0/#inbox/${source.metadata.messageId}`,
 				{
+					score: source.score,
 					subject: source.metadata.subject,
 					from:
 						source.metadata.fromAddress?.join(", ") ??
@@ -235,14 +274,26 @@ ${question}
 		});
 
 		await postOrUpdateMessage({
-			ts,
+			metadata: {
+				event_type: MetadataType.Sources,
+				event_payload: {
+					sources: sources.length,
+					dates: JSON.stringify(dates),
+					subject,
+					generatedQuestion: generatedQuestion ?? "",
+					senders: JSON.stringify(senders),
+				},
+			},
 			channel,
+			threadTs,
 			slackClient,
-			text: `${newAIMessage.text}\n\nSources:
+			text: `Sources:
 ${[...uniqueMailSources.entries()]
 	.map(
 		([url, metadata]) =>
-			`• <${url}|${metadata.subject.replaceAll(">", "")}> de ${metadata.from}`,
+			`• ${(metadata.score * 100).toFixed(
+				2,
+			)}% <${url}|${metadata.subject.replaceAll(">", "")}> de ${metadata.from}`,
 	)
 	.join("\n\n")}`,
 		});
@@ -250,6 +301,7 @@ ${[...uniqueMailSources.entries()]
 		clearInterval(dotInterval);
 		await postOrUpdateMessage({
 			ts,
+			threadTs,
 			channel,
 			text: `Oups, quelque chose s'est mal passé, je n'ai pas réussi à réfléchir correctement... Je vais contacter le support pour demander de l'aide !`,
 			slackClient,

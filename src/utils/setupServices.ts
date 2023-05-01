@@ -1,3 +1,5 @@
+import { GmailLoader } from "../document_loaders/web/gmail.js";
+import { MSLoader } from "../document_loaders/web/ms.js";
 import { SentenceTransformersEmbeddings } from "../embeddings/sentenceTransformers.js";
 import { LazyMailReaderVectorStore } from "../vectorstores/lazyMailReader.js";
 import { assertExists } from "./typing.js";
@@ -10,6 +12,9 @@ export function setupServices() {
 		GOOGLE_CLIENT_ID,
 		GOOGLE_CLIENT_SECRET,
 		GOOGLE_REDIRECT_URI,
+		MS_CLIENT_ID,
+		MS_CLIENT_SECRET,
+		MS_REDIRECT_URI,
 		SLACK_SIGNING_SECRET,
 		SLACK_BOT_TOKEN,
 		SECRET_KEY,
@@ -24,6 +29,9 @@ export function setupServices() {
 	assertExists(GOOGLE_CLIENT_ID, "GOOGLE_CLIENT_ID");
 	assertExists(GOOGLE_CLIENT_SECRET, "GOOGLE_CLIENT_SECRET");
 	assertExists(GOOGLE_REDIRECT_URI, "GOOGLE_REDIRECT_URI");
+	assertExists(MS_CLIENT_ID, "MS_CLIENT_ID");
+	assertExists(MS_CLIENT_SECRET, "MS_CLIENT_SECRET");
+	assertExists(MS_REDIRECT_URI, "MS_REDIRECT_URI");
 	assertExists(SLACK_SIGNING_SECRET, "SLACK_SIGNING_SECRET");
 	assertExists(SLACK_BOT_TOKEN, "SLACK_BOT_TOKEN");
 	assertExists(SECRET_KEY, "SECRET_KEY");
@@ -45,20 +53,30 @@ export function setupServices() {
 		client: elasticsearchClient,
 	});
 
-	const googleOauth2Client = new google.auth.OAuth2(
-		GOOGLE_CLIENT_ID,
-		GOOGLE_CLIENT_SECRET,
-		GOOGLE_REDIRECT_URI,
-	);
-
 	const encoding = encoding_for_model("text-davinci-003");
+
+	const gmailLoader = new GmailLoader({
+		googleClientId: GOOGLE_CLIENT_ID,
+		googleClientSecret: GOOGLE_CLIENT_SECRET,
+		googleRedirectUri: GOOGLE_REDIRECT_URI,
+	});
+
+	const msLoader = new MSLoader({
+		msClientId: MS_CLIENT_ID,
+		msClientSecret: MS_CLIENT_SECRET,
+		msRedirectUrl: MS_REDIRECT_URI,
+	});
 
 	return {
 		encoding,
-		googleOauth2Client,
+		gmailLoader,
+		msLoader,
 		embedding,
 		lazyMailVectorStore,
 		config: {
+			MS_CLIENT_ID,
+			MS_CLIENT_SECRET,
+			MS_REDIRECT_URI,
 			GOOGLE_CLIENT_ID,
 			GOOGLE_CLIENT_SECRET,
 			GOOGLE_REDIRECT_URI,

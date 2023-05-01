@@ -32,20 +32,35 @@ Merci!
 		return false;
 	}
 
-	if (!userInformation.accessToken || !userInformation.refreshToken) {
-		const authUrl = services.googleOauth2Client.generateAuthUrl({
-			access_type: "offline",
-			prompt: "consent",
-			scope: ["https://www.googleapis.com/auth/gmail.readonly"],
-			state: sign(services.config.SECRET_KEY, {
-				team,
-				user,
-				channel,
-				iat: Date.now(),
+	if (
+		!userInformation.accessToken ||
+		!userInformation.refreshToken ||
+		!userInformation.loaderType
+	) {
+		const state = {
+			team,
+			user,
+			channel,
+			iat: Date.now(),
+		};
+
+		const gmailAuthUrl = await services.gmailLoader.getAuthorizationUrl(
+			sign(services.config.SECRET_KEY, {
+				...state,
+				type: "gmail",
 			}),
-		});
+		);
+
+		const msAuthUrl = await services.msLoader.getAuthorizationUrl(
+			sign(services.config.SECRET_KEY, {
+				...state,
+				type: "ms",
+			}),
+		);
+
 		await slackClient.chat.postMessage({
-			text: `J'ai maintenant besoin d'accéder à tes emails. Peux tu t'authentifier sur ce lien s'il te plait ?\n ${authUrl}`,
+			text: `J'ai maintenant besoin d'accéder à tes emails. Peux tu t'authentifier sur un de ces liens s'il te plait ?\n
+<${gmailAuthUrl}|Gmail> ou <${msAuthUrl}|Office365>`,
 			channel,
 		});
 		return false;
@@ -64,6 +79,7 @@ Merci!
 		assertExists(userInformation.refreshToken, "userInformation.refreshToken");
 		const { documents, ts } = await downloadEmails(services, {
 			channel,
+			loaderType: userInformation.loaderType,
 			slackClient,
 			team,
 			tokens: {

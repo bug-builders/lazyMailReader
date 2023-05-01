@@ -61,7 +61,7 @@ ${request}
 			const parsedResponse = JSON.parse(lastLine);
 			return parsedResponse.senders;
 		} catch {
-			console.error("Wrong json", lastLine);
+			console.error("Wrong json senders", lastLine);
 		}
 	}
 	return null;

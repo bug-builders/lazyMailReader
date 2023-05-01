@@ -11,6 +11,7 @@ import {
 } from "./vectorstores/lazyMailReader.js";
 import { encoding_for_model } from "@dqbd/tiktoken";
 import { Client } from "@elastic/elasticsearch";
+import { existsSync, mkdirSync } from "fs";
 import { BaseCallbackHandler, CallbackManager } from "langchain/callbacks";
 import { ChatOpenAI } from "langchain/chat_models/openai";
 import { Document } from "langchain/document";
@@ -20,6 +21,7 @@ import {
 	SystemChatMessage,
 } from "langchain/schema";
 import { TokenTextSplitter } from "langchain/text_splitter";
+import { join } from "path";
 import readline from "readline";
 
 const enc = encoding_for_model("gpt-3.5-turbo");
@@ -169,13 +171,20 @@ async function askQuestion({
 }
 
 (async () => {
-	if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
-		throw new Error("Missing GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET");
+	if (
+		!process.env.GOOGLE_CLIENT_ID ||
+		!process.env.GOOGLE_CLIENT_SECRET ||
+		!process.env.GOOGLE_REDIRECT_URI
+	) {
+		throw new Error(
+			"Missing GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET or GOOGLE_REDIRECT_URI",
+		);
 	}
 
 	const gmailLoader = new GmailLoader({
 		googleClientId: process.env.GOOGLE_CLIENT_ID,
 		googleClientSecret: process.env.GOOGLE_CLIENT_SECRET,
+		googleRedirectUri: process.env.GOOGLE_REDIRECT_URI,
 	});
 
 	const client = new Client({
@@ -210,7 +219,20 @@ async function askQuestion({
 	});
 
 	if (fetchEmails.toLowerCase().startsWith("y")) {
+		const googleEmlPath = "/tmp/test/eml-files";
+
+		const cacheExists = existsSync(googleEmlPath);
+		if (!cacheExists) {
+			mkdirSync(googleEmlPath, { recursive: true });
+		}
+
+		const tokens = await gmailLoader.getAuthorization(
+			"/tmp/google-credentials.json",
+		);
+
 		const documents = await gmailLoader.load({
+			googleEmlPath,
+			tokens,
 			userId: "test",
 			progressCallback: async ({ index, total }) =>
 				console.log(`[${index}/${total}] reading mails`),

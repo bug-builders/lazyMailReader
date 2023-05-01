@@ -27,7 +27,7 @@ demande:
 What was the price we negotiated with Damien in Q1?
 """
 Cette demande concerne une négociation entre l'utilisateur et Damien concernant un prix. Les sujets d'e-mails intéressants peuvent contenir les mots "prix", "négociation", "Damien" et/ou "Q1".
-{"subject": "price negotiation Damien Q1"}
+{"sujet": "price negotiation Damien Q1"}
 
 Demande:
 """
@@ -59,7 +59,7 @@ ${request}
 			const parsedResponse = JSON.parse(lastLine);
 			return parsedResponse.sujet;
 		} catch {
-			console.error("Wrong json", lastLine);
+			console.error("Wrong json subject fr", lastLine);
 		}
 	}
 	return "";
