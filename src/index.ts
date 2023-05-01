@@ -231,7 +231,7 @@ async function askQuestion({
 		);
 
 		const documents = await gmailLoader.load({
-			googleEmlPath,
+			emlPath: googleEmlPath,
 			tokens,
 			userId: "test",
 			progressCallback: async ({ index, total }) =>
