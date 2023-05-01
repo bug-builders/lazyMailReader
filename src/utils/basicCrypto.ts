@@ -1,5 +1,10 @@
 import Crypto from "crypto";
 
+export enum CryptoUsage {
+	Oauth2 = "oauth2",
+	Stripe = "stripe",
+}
+
 const IV_LENGTH = 12;
 const SALT_LENGTH = 16;
 const KEY_LENGTH = 32;
@@ -10,15 +15,25 @@ const CRYPTO_ENCODING = "hex";
 
 const HEX_SEPARATOR = ":";
 
-function derivateKey(key: string) {
+function derivateKey(key: string, usage: CryptoUsage) {
 	const salt = "0".repeat(SALT_LENGTH);
 	const iteration = 1;
 	const digest = "sha512";
-	return Crypto.pbkdf2Sync(key, salt, iteration, KEY_LENGTH, digest);
+	return Crypto.pbkdf2Sync(
+		`${key}:${usage}`,
+		salt,
+		iteration,
+		KEY_LENGTH,
+		digest,
+	);
 }
 
-export function sign(key: string, data: Record<string, unknown> | string) {
-	const dKey = derivateKey(key);
+export function sign(
+	key: string,
+	usage: CryptoUsage,
+	data: Record<string, unknown> | string,
+) {
+	const dKey = derivateKey(key, usage);
 	const hmac = Crypto.createHmac("sha256", dKey);
 	const dataToSign = Buffer.from(JSON.stringify(data), CLEAR_ENCODING).toString(
 		CRYPTO_ENCODING,
@@ -29,9 +44,10 @@ export function sign(key: string, data: Record<string, unknown> | string) {
 
 export function verify(
 	key: string,
+	usage: CryptoUsage,
 	signedData: string,
 ): Record<string, unknown> {
-	const dKey = derivateKey(key);
+	const dKey = derivateKey(key, usage);
 	try {
 		const hmac = Crypto.createHmac("sha256", dKey);
 		const [realSignedData, claimedSignature] = signedData.split(HEX_SEPARATOR);

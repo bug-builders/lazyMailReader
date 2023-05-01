@@ -82,7 +82,10 @@ export async function downloadEmails(
 		ts?: string;
 		tokens: { accessToken: string; refreshToken: string };
 	},
-) {
+): Promise<{
+	documents: Document<LazyMailReaderMetadata>[];
+	ts: string;
+}> {
 	let currentTs = ts;
 	try {
 		const emlPath = join(
@@ -171,7 +174,7 @@ export async function downloadEmails(
 				userInformation.refreshToken = refreshToken;
 
 				saveUserInformation(services, { team, user, userInformation });
-				await downloadEmails(services, {
+				return await downloadEmails(services, {
 					channel,
 					loaderType,
 					slackClient,

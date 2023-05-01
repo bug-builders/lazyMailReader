@@ -11,13 +11,20 @@ import { handleOpenAIKeyRetrieval } from "./steps/handleOpenAIKeyRetrieval.js";
 import { handleQuestion } from "./steps/handleQuestion.js";
 import { indexEmails } from "./steps/indexEmails.js";
 import { setupBot } from "./steps/setupBot.js";
+import { handleSubscriptionCreated } from "./stripe/handleSubscriptionCreated.js";
+import { handleSubscriptionDeleted } from "./stripe/handleSubscriptionDeleted.js";
+import { handleSubscriptionUpdated } from "./stripe/handleSubscriptionUpdated.js";
+import { CryptoUsage } from "./utils/basicCrypto.js";
+import { FREE_TRIAL_QUERY_COUNT } from "./utils/constant.js";
+import { createSlackClientForTeam } from "./utils/createSlackClientForTeam.js";
 import { generateOnePageRouteHandlers } from "./utils/onePageRoute.js";
 import { postOrUpdateMessage } from "./utils/postOrUpdateMessage.js";
 import { setupServices } from "./utils/setupServices.js";
 import { assertExists, assertIsString } from "./utils/typing.js";
 import bolt from "@slack/bolt";
-import { readFileSync, rmSync, rmdirSync, writeFileSync } from "fs";
+import { readFileSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
+import stripe from "stripe";
 
 export type WebClient = typeof app.client;
 
@@ -29,6 +36,57 @@ const app = new bolt.App({
 	},
 	customRoutes: [
 		...generateOnePageRouteHandlers(services),
+		{
+			method: "POST",
+			path: "/stripe",
+			handler: async (req, res) => {
+				try {
+					const sig = res.req.headers["stripe-signature"];
+					assertExists(sig, "sig");
+
+					const body = await new Promise<string>((resolve, reject) => {
+						let data = "";
+						res.req.on("data", (chunk) => {
+							data += chunk;
+						});
+						res.req.on("end", () => {
+							resolve(data);
+						});
+						res.req.on("error", reject);
+					});
+
+					const event = services.stripeClient.webhooks.constructEvent(
+						body,
+						sig,
+						services.config.STRIPE_WEBHOOK_SECRET,
+					);
+
+					switch (event.type) {
+						case "customer.subscription.created": {
+							await handleSubscriptionCreated(services, { event });
+							break;
+						}
+						case "customer.subscription.updated": {
+							await handleSubscriptionUpdated(services, { event });
+						}
+						case "customer.subscription.deleted": {
+							await handleSubscriptionDeleted(services, { event });
+							break;
+						}
+					}
+					res.statusCode = 200;
+					res.end("ok");
+					return;
+				} catch (error) {
+					console.error("Error stripe webhook:", error);
+					res.statusCode = 500;
+					res.setHeader("Content-Type", "text/plain");
+					res.end(
+						`Error getting tokens: ${error}. Check the console for more information.\n`,
+					);
+				}
+			},
+		},
 		{
 			method: "GET",
 			path: "/oauth2callback",
@@ -150,6 +208,20 @@ app.event("app_home_opened", async ({ context, client, event }) => {
 			  ]
 			: [];
 
+	const stripePortalBlock: (bolt.Block | bolt.KnownBlock)[] =
+		userInformation.stripeCustomerId
+			? [
+					{
+						type: "section",
+						block_id: "stripe_text",
+						text: {
+							type: "mrkdwn",
+							text: `Vous pouvez accéder à vos factures et gérer votre subscription Stripe depuis <${services.config.STRIPE_CUSTOMER_PORTAL}|leur portail>.`,
+						},
+					},
+			  ]
+			: [];
+
 	await client.views.publish({
 		user_id: event.user,
 		view: {
@@ -188,7 +260,20 @@ app.event("app_home_opened", async ({ context, client, event }) => {
 						}`,
 					},
 				},
+				{
+					type: "section",
+					block_id: "setup_status_stripe",
+					text: {
+						type: "mrkdwn",
+						text: `*Subscription Stripe:* ${
+							userInformation.stripeSubscriptionStatus !== ""
+								? userInformation.stripeSubscriptionStatus
+								: ":x:"
+						}`,
+					},
+				},
 				...syncEmailBlock,
+				...stripePortalBlock,
 			],
 		},
 	});
@@ -340,6 +425,9 @@ app.message(async ({ message, client }) => {
 		openAIKey,
 		refreshToken,
 		loaderType,
+		queryCount: savedQueryCount,
+		stripeCustomerId,
+		stripeSubscriptionStatus,
 	} = userInformation;
 
 	assertExists(accessToken, "accessToken");
@@ -352,6 +440,25 @@ app.message(async ({ message, client }) => {
 	assertExists(loaderType, "loaderType");
 
 	const lastQueryAt = new Date().toISOString();
+	const queryCount = savedQueryCount ?? 0;
+
+	if (
+		(!stripeSubscriptionStatus ||
+			!["trialing", "active"].includes(stripeSubscriptionStatus)) &&
+		queryCount > FREE_TRIAL_QUERY_COUNT
+	) {
+		const subscriptionLink = new URL(services.config.STRIPE_SUBSCRIPTION_LINK);
+		subscriptionLink.searchParams.set("prefilled_email", emailAddress);
+		subscriptionLink.searchParams.set("client_reference_id", `${team}-${user}`);
+		await postOrUpdateMessage({
+			channel,
+			slackClient: client,
+			text: `Je suis vraiment navré mais tu as atteint la limite de questions de découverte.
+Si tu veux continuer merci de t'enregistrer en suivant ce <${subscriptionLink.toString()}|lien Stripe>.`,
+			threadTs,
+		});
+		return;
+	}
 
 	const finalUserInformation = {
 		loaderType,
@@ -364,6 +471,9 @@ app.message(async ({ message, client }) => {
 		lastIndexationDoneAt,
 		openAIKey,
 		refreshToken,
+		queryCount,
+		stripeCustomerId: stripeCustomerId ?? "",
+		stripeSubscriptionStatus: stripeSubscriptionStatus ?? "",
 	};
 
 	await handleQuestion(services, {
@@ -377,7 +487,7 @@ app.message(async ({ message, client }) => {
 	});
 
 	saveUserInformation(services, {
-		userInformation: finalUserInformation,
+		userInformation: { ...finalUserInformation, queryCount: queryCount + 1 },
 		team,
 		user,
 	});

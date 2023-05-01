@@ -1,5 +1,5 @@
 import { retrieveUserInformation } from "../data-accessors/user-information.js";
-import { sign } from "../utils/basicCrypto.js";
+import { CryptoUsage, sign } from "../utils/basicCrypto.js";
 import { postOrUpdateMessage } from "../utils/postOrUpdateMessage.js";
 import { Services } from "../utils/setupServices.js";
 import { assertExists } from "../utils/typing.js";
@@ -45,14 +45,14 @@ Merci!
 		};
 
 		const gmailAuthUrl = await services.gmailLoader.getAuthorizationUrl(
-			sign(services.config.SECRET_KEY, {
+			sign(services.config.SECRET_KEY, CryptoUsage.Oauth2, {
 				...state,
 				type: "gmail",
 			}),
 		);
 
 		const msAuthUrl = await services.msLoader.getAuthorizationUrl(
-			sign(services.config.SECRET_KEY, {
+			sign(services.config.SECRET_KEY, CryptoUsage.Oauth2, {
 				...state,
 				type: "ms",
 			}),

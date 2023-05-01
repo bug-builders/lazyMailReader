@@ -2,8 +2,9 @@ import {
 	retrieveUserInformation,
 	saveUserInformation,
 } from "../data-accessors/user-information.js";
-import { verify } from "../utils/basicCrypto.js";
+import { CryptoUsage, verify } from "../utils/basicCrypto.js";
 import { STATE_EXPIRATION_MS } from "../utils/constant.js";
+import { createSlackClientForTeam } from "../utils/createSlackClientForTeam.js";
 import { postOrUpdateMessage } from "../utils/postOrUpdateMessage.js";
 import { Services } from "../utils/setupServices.js";
 import {
@@ -34,7 +35,7 @@ export async function handleOauthCallback(
 			channel: verifiedChannel,
 			iat,
 			type,
-		} = verify(services.config.SECRET_KEY, state);
+		} = verify(services.config.SECRET_KEY, CryptoUsage.Oauth2, state);
 		assertIsString(team);
 		assertIsString(user);
 		assertIsString(verifiedChannel);
@@ -59,25 +60,9 @@ export async function handleOauthCallback(
 		userInformation.loaderType = type;
 		saveUserInformation(services, { team, user, userInformation });
 
-		const storePath = join(
-			services.config.userInformationDirectory,
-			`/${team}.json`,
-		);
-		const botInstallation: bolt.Installation = JSON.parse(
-			readFileSync(storePath, "utf-8"),
-		);
-
-		const botToken = botInstallation.bot?.token;
-		assertExists(botToken, "botToken");
-
-		const authenticatedApp = new bolt.App({
-			signingSecret: services.config.SLACK_SIGNING_SECRET,
-			token: botToken,
-		});
-		slackClient = authenticatedApp.client;
+		slackClient = createSlackClientForTeam(services, { team });
 
 		await slackClient.chat.postMessage({
-			token: botToken,
 			text: "Parfait, j'ai tout ce qu'il me faut !\nLaisse moi quelques minutes pour lire tes mails et je reviens vers toi dès que je suis prêt...",
 			channel,
 		});

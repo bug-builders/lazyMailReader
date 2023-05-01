@@ -11,19 +11,28 @@ export type UserInformation = {
 	lastQueryAt?: string; // ISO8601
 	lastEmailsDownloadedAt?: string; // ISO8601
 	lastIndexationDoneAt?: string; // ISO8601
+	queryCount?: number;
 	emailAddress?: string;
 	loaderType?: string;
+	stripeCustomerId?: string;
+	stripeSubscriptionStatus?: string;
 };
 
 export function deleteUserInformation(
 	services: Services,
 	{ team, user }: { team: string; user: string },
 ) {
-	const userInformationFile = join(
-		services.config.userInformationDirectory,
-		`/${team}-${user}.json`,
-	);
-	fs.rmSync(userInformationFile);
+	const userInformation = retrieveUserInformation(services, { team, user });
+	saveUserInformation(services, {
+		team,
+		user,
+		userInformation: {
+			channel: userInformation.channel,
+			queryCount: userInformation.queryCount,
+			emailAddress: userInformation.emailAddress,
+			stripeCustomerId: userInformation.stripeCustomerId,
+		},
+	});
 }
 
 export function retrieveUserInformation(

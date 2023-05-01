@@ -19,6 +19,7 @@ export async function postOrUpdateMessage({
 }) {
 	if (ts) {
 		await slackClient.chat.update({
+			unfurl_links: false,
 			metadata,
 			text,
 			ts,
@@ -28,6 +29,7 @@ export async function postOrUpdateMessage({
 		return ts;
 	}
 	const { ts: newTs } = await slackClient.chat.postMessage({
+		unfurl_links: false,
 		metadata,
 		mrkdwn: true,
 		text,
