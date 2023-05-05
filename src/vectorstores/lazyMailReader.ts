@@ -289,6 +289,7 @@ export class LazyMailReaderVectorStore extends VectorStore {
 			dates: { startingDate: string | null; endingDate: string | null };
 			subject: string;
 			senders: string[] | null;
+			lang: "en" | "fr";
 		} & Record<string, string>,
 	): Promise<[Document<LazyMailReaderMetadata>, number][]> {
 		if (!filter.userId) {
@@ -418,7 +419,7 @@ export class LazyMailReaderVectorStore extends VectorStore {
 		const scores = await this.crossEncode(
 			filter.query,
 			sentences,
-			this.multiLang,
+			filter.lang !== "en",
 		);
 		return hits.hits.map((hit, i) => [
 			new Document<LazyMailReaderMetadata>({

@@ -164,6 +164,7 @@ ${question ? `_${generatedQuestion}_` : ""}`,
 				subject,
 				senders,
 				userId: `${team}-${user}`,
+				lang: userInformation.lang,
 			},
 		)) as Document<LazyMailReaderMetadata>[];
 
