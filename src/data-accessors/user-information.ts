@@ -16,6 +16,7 @@ export type UserInformation = {
 	loaderType?: string;
 	stripeCustomerId?: string;
 	stripeSubscriptionStatus?: string;
+	lang?: "en" | "fr";
 };
 
 export function deleteUserInformation(
@@ -27,6 +28,7 @@ export function deleteUserInformation(
 		team,
 		user,
 		userInformation: {
+			lang: userInformation.lang,
 			channel: userInformation.channel,
 			queryCount: userInformation.queryCount,
 			emailAddress: userInformation.emailAddress,

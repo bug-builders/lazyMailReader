@@ -5,6 +5,7 @@ import {
 	saveUserInformation,
 } from "./data-accessors/user-information.js";
 import { wrapHandleOauthCallback } from "./document_loaders/web/utils/wrapHandleOauthCallback.js";
+import { selectLang } from "./i18n/index.js";
 import { downloadEmails } from "./steps/downloadEmails.js";
 import { handleOauthCallback } from "./steps/handleOauthCallback.js";
 import { handleOpenAIKeyRetrieval } from "./steps/handleOpenAIKeyRetrieval.js";
@@ -14,17 +15,14 @@ import { setupBot } from "./steps/setupBot.js";
 import { handleSubscriptionCreated } from "./stripe/handleSubscriptionCreated.js";
 import { handleSubscriptionDeleted } from "./stripe/handleSubscriptionDeleted.js";
 import { handleSubscriptionUpdated } from "./stripe/handleSubscriptionUpdated.js";
-import { CryptoUsage } from "./utils/basicCrypto.js";
 import { FREE_TRIAL_QUERY_COUNT } from "./utils/constant.js";
-import { createSlackClientForTeam } from "./utils/createSlackClientForTeam.js";
 import { generateOnePageRouteHandlers } from "./utils/onePageRoute.js";
 import { postOrUpdateMessage } from "./utils/postOrUpdateMessage.js";
 import { setupServices } from "./utils/setupServices.js";
-import { assertExists, assertIsString } from "./utils/typing.js";
+import { assertExists, assertIsLang, assertIsString } from "./utils/typing.js";
 import bolt from "@slack/bolt";
 import { readFileSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
-import stripe from "stripe";
 
 export type WebClient = typeof app.client;
 
@@ -177,10 +175,15 @@ app.event("app_home_opened", async ({ context, client, event }) => {
 						text: {
 							type: "mrkdwn",
 							text: userInformation.lastEmailsDownloadedAt
-								? `Dernière synchronisation des emails: ${new Date(
-										userInformation.lastEmailsDownloadedAt,
-								  ).toLocaleString("fr-FR")}`
-								: "Emails non synchronisé",
+								? selectLang(userInformation.lang).lastSyncTime.replace(
+										"{date}",
+										new Date(
+											userInformation.lastEmailsDownloadedAt,
+										).toLocaleString(
+											userInformation.lang === "en" ? "en-US" : "fr-FR",
+										),
+								  )
+								: selectLang(userInformation.lang).emailNotSync,
 						},
 					},
 					{
@@ -191,7 +194,7 @@ app.event("app_home_opened", async ({ context, client, event }) => {
 								type: "button",
 								text: {
 									type: "plain_text",
-									text: "Synchroniser",
+									text: selectLang(userInformation.lang).synchronize,
 								},
 								action_id: "sync_emails",
 							},
@@ -199,7 +202,7 @@ app.event("app_home_opened", async ({ context, client, event }) => {
 								type: "button",
 								text: {
 									type: "plain_text",
-									text: "⚠️ Effacer mes données ⚠️",
+									text: selectLang(userInformation.lang).deleteData,
 								},
 								action_id: "delete_emails",
 							},
@@ -216,7 +219,10 @@ app.event("app_home_opened", async ({ context, client, event }) => {
 						block_id: "stripe_text",
 						text: {
 							type: "mrkdwn",
-							text: `Vous pouvez accéder à vos factures et gérer votre subscription Stripe depuis <${services.config.STRIPE_CUSTOMER_PORTAL}|leur portail>.`,
+							text: selectLang(userInformation.lang).stripeAccess.replace(
+								"{stripe_portal}",
+								services.config.STRIPE_CUSTOMER_PORTAL,
+							),
 						},
 					},
 			  ]
@@ -229,11 +235,53 @@ app.event("app_home_opened", async ({ context, client, event }) => {
 			blocks: [
 				{
 					type: "section",
+					block_id: "change_lang",
+					text: {
+						type: "mrkdwn",
+						text: selectLang(userInformation.lang).lang,
+					},
+					accessory: {
+						type: "static_select",
+						placeholder: {
+							type: "plain_text",
+							text: selectLang(userInformation.lang).changeLang,
+							emoji: true,
+						},
+						options: [
+							{
+								text: {
+									type: "plain_text",
+									text: "Français",
+									emoji: true,
+								},
+								value: "fr",
+							},
+							{
+								text: {
+									type: "plain_text",
+									text: "English",
+									emoji: true,
+								},
+								value: "en",
+							},
+						],
+						action_id: "submit_lang",
+					},
+				},
+				{
+					type: "section",
 					block_id: "welcome",
 					text: {
 						type: "mrkdwn",
-						text: `:wave: *Bonjour, <@${event.user}>!*${
-							count > 0 ? `\nJ'ai en mémoire ${count} de tes emails.` : ""
+						text: `:wave: *${selectLang(userInformation.lang).hello}, <@${
+							event.user
+						}>!*${
+							count > 0
+								? `\n${selectLang(userInformation.lang).countEmail.replace(
+										"{count}",
+										count.toString(),
+								  )}`
+								: ""
 						}`,
 					},
 				},
@@ -245,7 +293,7 @@ app.event("app_home_opened", async ({ context, client, event }) => {
 					block_id: "setup_status_openai",
 					text: {
 						type: "mrkdwn",
-						text: `*Clé OpenAI:* ${
+						text: `*${selectLang(userInformation.lang).openAIKey}:* ${
 							userInformation.openAIKey ? ":heavy_check_mark:" : ":x:"
 						}`,
 					},
@@ -255,7 +303,7 @@ app.event("app_home_opened", async ({ context, client, event }) => {
 					block_id: "setup_status_emails",
 					text: {
 						type: "mrkdwn",
-						text: `*Accès aux emails:* ${
+						text: `*${selectLang(userInformation.lang).emailAccess}:* ${
 							userInformation.accessToken ? ":heavy_check_mark:" : ":x:"
 						}`,
 					},
@@ -276,6 +324,27 @@ app.event("app_home_opened", async ({ context, client, event }) => {
 				...stripePortalBlock,
 			],
 		},
+	});
+});
+
+app.action("submit_lang", async ({ ack, context, body, action }) => {
+	assertExists(context.teamId, "context.teamId");
+	await ack();
+	const userInformation = retrieveUserInformation(services, {
+		team: context.teamId,
+		user: body.user.id,
+	});
+	if (action.type !== "static_select") {
+		return;
+	}
+	assertIsLang(action.selected_option.value);
+
+	userInformation.lang = action.selected_option.value;
+
+	saveUserInformation(services, {
+		team: context.teamId,
+		user: body.user.id,
+		userInformation,
 	});
 });
 
@@ -304,7 +373,7 @@ app.action("delete_emails", async ({ ack, client, context, body }) => {
 		await postOrUpdateMessage({
 			channel: userInformation.channel,
 			slackClient: client,
-			text: "Et voilà, j'ai tout oublié à propos de tes emails. N'hésites pas à revenir profiter de mes services !",
+			text: selectLang(userInformation.lang).allForgotten,
 		});
 	}
 });
@@ -328,7 +397,7 @@ app.action("sync_emails", async ({ ack, client, context, body }) => {
 	await postOrUpdateMessage({
 		channel,
 		slackClient: client,
-		text: "Très bien, je vais aller lire tes derniers emails...",
+		text: selectLang(userInformation.lang).allForgotten,
 	});
 
 	const { documents, ts } = await downloadEmails(services, {
@@ -338,6 +407,7 @@ app.action("sync_emails", async ({ ack, client, context, body }) => {
 		tokens: { accessToken, refreshToken },
 		loaderType,
 		user: body.user.id,
+		lang: userInformation.lang,
 	});
 
 	const { ts: currentTs } = await indexEmails(services, {
@@ -347,13 +417,14 @@ app.action("sync_emails", async ({ ack, client, context, body }) => {
 		team: context.teamId,
 		user: body.user.id,
 		ts,
+		lang: userInformation.lang,
 	});
 
 	await postOrUpdateMessage({
 		ts: currentTs,
 		channel,
 		slackClient: client,
-		text: "Et voilà... Que souhaiterais tu savoir?",
+		text: selectLang(userInformation.lang).allGood,
 	});
 });
 
@@ -399,6 +470,7 @@ app.message(async ({ message, client }) => {
 			channel,
 			text,
 			displayName: userInformation.displayName,
+			lang: userInformation.lang,
 		});
 		userInformation.openAIKey = openAiKey ?? undefined;
 
@@ -410,6 +482,7 @@ app.message(async ({ message, client }) => {
 		team,
 		channel,
 		slackClient: client,
+		lang: userInformation.lang,
 	});
 
 	if (!setupCompleted) {
@@ -428,6 +501,7 @@ app.message(async ({ message, client }) => {
 		queryCount: savedQueryCount,
 		stripeCustomerId,
 		stripeSubscriptionStatus,
+		lang,
 	} = userInformation;
 
 	assertExists(accessToken, "accessToken");
@@ -453,8 +527,10 @@ app.message(async ({ message, client }) => {
 		await postOrUpdateMessage({
 			channel,
 			slackClient: client,
-			text: `Je suis vraiment navré mais tu as atteint la limite de questions de découverte.
-Si tu veux continuer merci de t'enregistrer en suivant ce <${subscriptionLink.toString()}|lien Stripe>.`,
+			text: selectLang(userInformation.lang).timeToPay.replace(
+				"{stripe_link}",
+				subscriptionLink.toString,
+			),
 			threadTs,
 		});
 		return;
@@ -474,7 +550,14 @@ Si tu veux continuer merci de t'enregistrer en suivant ce <${subscriptionLink.to
 		queryCount,
 		stripeCustomerId: stripeCustomerId ?? "",
 		stripeSubscriptionStatus: stripeSubscriptionStatus ?? "",
+		lang: lang ?? "fr",
 	};
+
+	saveUserInformation(services, {
+		userInformation: { ...finalUserInformation, queryCount: queryCount + 1 },
+		team,
+		user,
+	});
 
 	await handleQuestion(services, {
 		team,
@@ -484,12 +567,6 @@ Si tu veux continuer merci de t'enregistrer en suivant ce <${subscriptionLink.to
 		question: text,
 		slackClient: client,
 		userInformation: finalUserInformation,
-	});
-
-	saveUserInformation(services, {
-		userInformation: { ...finalUserInformation, queryCount: queryCount + 1 },
-		team,
-		user,
 	});
 });
 

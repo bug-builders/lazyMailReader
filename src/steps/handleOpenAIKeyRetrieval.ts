@@ -1,3 +1,4 @@
+import { selectLang } from "../i18n/index.js";
 import { bindChatToSlackMessage } from "../utils/bindChatToSlackMessage.js";
 import { assertExists } from "../utils/typing.js";
 import { WebClient } from "../www.js";
@@ -15,11 +16,13 @@ export async function handleOpenAIKeyRetrieval({
 	displayName,
 	slackClient,
 	channel,
+	lang,
 }: {
 	channel: string;
 	text: string;
 	displayName: string;
 	slackClient: WebClient;
+	lang?: "en" | "fr";
 }) {
 	const openAIKeyMatch = text.match(openAIKeyRegExp);
 	if (!openAIKeyMatch?.[0]) {
@@ -29,8 +32,7 @@ export async function handleOpenAIKeyRetrieval({
 	if (!openAIKey) {
 		return null;
 	}
-	const initialText =
-		"Merci, laisse moi vérifier si elle fonctionne correctement...\n";
+	const initialText = `${selectLang(lang).thxForTheKey}\n`;
 	const { ts } = await slackClient.chat.postMessage({
 		text: initialText,
 		channel,
@@ -48,26 +50,23 @@ export async function handleOpenAIKeyRetrieval({
 
 	try {
 		await chat.call([
-			new SystemChatMessage(
-				`Tu es l'assistant personnel des emails de ${displayName}. Tu as une liste d'emails pouvant contenir la réponse à la question de ${displayName}. Ton but est de lire puis de répondre à ${displayName} du mieux que tu peux.`,
-			),
-			new HumanChatMessage("Bonjour !"),
-			new AIChatMessage(`Bonjour !
-Nous allons d'abord terminer de m'installer.
-Afin de pouvoir continuer la discussion j'ai besoin d'une clé OpenAI...
-Si tu peux juste me la coller là, ça me permettra d'être plus intelligent :D
-Merci!`),
-			new HumanChatMessage("Voici la clé: sk_ultAMrcUJo57kNDalZGo-nXn6L7YSAK2"),
-			new AIChatMessage(initialText),
+			new SystemChatMessage(selectLang(lang).prompt.baseSystem),
+			new HumanChatMessage(`${selectLang(lang).hello} !`),
+			new AIChatMessage(`${selectLang(lang).hello} !
+${selectLang(lang).prompt.askForKey}`),
 			new HumanChatMessage(
-				`Présentes toi et raconte moi directement une anectode sur l'inventeur des emails sans me rappeler que je te l'ai demandé.`,
+				`${
+					selectLang(lang).prompt.hereIsTheKey
+				}: sk_ultAMrcUJo57kNDalZGo-nXn6L7YSAK2`,
 			),
+			new AIChatMessage(initialText),
+			new HumanChatMessage(selectLang(lang).prompt.presentYourself),
 		]);
 		return openAIKey;
 	} catch (error) {
 		await slackClient.chat.postMessage({
 			channel,
-			text: `Oups, cela n'a pas fonctionné. Peux tu réessayer ?
+			text: `${selectLang(lang).oopsDidntWork}
 ${error}`,
 		});
 		throw error;

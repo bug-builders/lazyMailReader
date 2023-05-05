@@ -2,12 +2,10 @@ import {
 	retrieveUserInformation,
 	saveUserInformation,
 } from "../data-accessors/user-information.js";
+import { selectLang } from "../i18n/index.js";
 import { createSlackClientForTeam } from "../utils/createSlackClientForTeam.js";
 import { Services } from "../utils/setupServices.js";
 import { assertExists, assertIsString } from "../utils/typing.js";
-import bolt from "@slack/bolt";
-import { readFileSync } from "fs";
-import { join } from "path";
 import stripe from "stripe";
 
 export async function handleSubscriptionCreated(
@@ -53,7 +51,7 @@ export async function handleSubscriptionCreated(
 	const slackClient = createSlackClientForTeam(services, { team });
 
 	await slackClient.chat.postMessage({
-		text: "Merci beaucoup de me faire confiance. Je vais tâcher de ne pas te décevoir ! Tu peux maintenant me poser autant de question que tu veux.",
+		text: selectLang(userInformation.lang).thxForPaying,
 		channel: userInformation.channel,
 	});
 }

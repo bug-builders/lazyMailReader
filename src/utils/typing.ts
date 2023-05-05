@@ -22,3 +22,10 @@ export function assertIsNumber(value: unknown): asserts value is number {
 		throw new Error("value is not of expected number type.");
 	}
 }
+
+export function assertIsLang(value: string): asserts value is "en" | "fr" {
+	if (["en", "fr"].includes(value)) {
+		return;
+	}
+	throw new Error(`Invalid lang ${value}`);
+}

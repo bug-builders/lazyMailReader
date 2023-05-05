@@ -2,6 +2,7 @@ import {
 	retrieveUserInformation,
 	saveUserInformation,
 } from "../data-accessors/user-information.js";
+import { selectLang } from "../i18n/index.js";
 import { createSlackClientForTeam } from "../utils/createSlackClientForTeam.js";
 import { Services } from "../utils/setupServices.js";
 import { assertExists, assertIsString } from "../utils/typing.js";
@@ -37,17 +38,17 @@ export async function handleSubscriptionUpdated(
 
 	if (subscription.status === "active") {
 		await slackClient.chat.postMessage({
-			text: "Merci beaucoup de continuer à m'utiliser !",
+			text: selectLang(userInformation.lang).thxForContinuing,
 			channel,
 		});
 	} else if (subscription.status === "canceled") {
 		await slackClient.chat.postMessage({
-			text: "Je suis navré que tu ne sois pas satisfait de mes services. Je vais essayer de m'améliorer, n'hésite pas à revenir dans quelques temps !",
+			text: selectLang(userInformation.lang).sorryYouStopped,
 			channel,
 		});
 	} else {
 		await slackClient.chat.postMessage({
-			text: "Quelque chose s'est mal passé avec votre subscription Stripe. Je vous invite à nous contacter pour débloquer la situation: contact@bug.builders",
+			text: selectLang(userInformation.lang).stripeProblem,
 			channel,
 		});
 	}

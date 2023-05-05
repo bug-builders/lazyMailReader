@@ -1,10 +1,14 @@
 import { GmailLoader } from "./document_loaders/web/gmail.js";
 import { SentenceTransformersEmbeddings } from "./embeddings/sentenceTransformers.js";
 import { I18N } from "./i18n/index.js";
-import { metadataDates } from "./prompts/metadata-dates-fr.js";
-import { metadataQuestion } from "./prompts/metadata-question-fr.js";
-import { metadataSenders } from "./prompts/metadata-senders-fr.js";
-import { metadataSubject } from "./prompts/metadata-subject-fr.js";
+import { metadataDates as metadataDatesFr } from "./prompts/metadata-dates-fr.js";
+import { metadataDates } from "./prompts/metadata-dates.js";
+import { metadataQuestion as metadataQuestionFr } from "./prompts/metadata-question-fr.js";
+import { metadataQuestion } from "./prompts/metadata-question.js";
+import { metadataSenders as metadataSendersFr } from "./prompts/metadata-senders-fr.js";
+import { metadataSenders } from "./prompts/metadata-senders.js";
+import { metadataSubject as metadataSubjectFr } from "./prompts/metadata-subject-fr.js";
+import { metadataSubject } from "./prompts/metadata-subject.js";
 import {
 	LazyMailReaderMetadata,
 	LazyMailReaderVectorStore,
@@ -75,10 +79,10 @@ async function askQuestion({
 	});
 
 	const [dates, subject, generatedQuestion, senders] = await Promise.all([
-		metadataDates(question),
-		metadataSubject(question),
-		metadataQuestion(question),
-		metadataSenders(question),
+		metadataDatesFr(question),
+		metadataSubjectFr(question),
+		metadataQuestionFr(question),
+		metadataSendersFr(question),
 	]);
 
 	console.log(

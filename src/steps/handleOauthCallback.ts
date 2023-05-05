@@ -2,6 +2,7 @@ import {
 	retrieveUserInformation,
 	saveUserInformation,
 } from "../data-accessors/user-information.js";
+import { selectLang } from "../i18n/index.js";
 import { CryptoUsage, verify } from "../utils/basicCrypto.js";
 import { STATE_EXPIRATION_MS } from "../utils/constant.js";
 import { createSlackClientForTeam } from "../utils/createSlackClientForTeam.js";
@@ -63,7 +64,7 @@ export async function handleOauthCallback(
 		slackClient = createSlackClientForTeam(services, { team });
 
 		await slackClient.chat.postMessage({
-			text: "Parfait, j'ai tout ce qu'il me faut !\nLaisse moi quelques minutes pour lire tes mails et je reviens vers toi dès que je suis prêt...",
+			text: selectLang(userInformation.lang).prompt.startEmailProcessing,
 			channel,
 		});
 
@@ -74,6 +75,7 @@ export async function handleOauthCallback(
 			team,
 			tokens,
 			user,
+			lang: userInformation.lang,
 		});
 
 		const { ts: currentTs } = await indexEmails(services, {
@@ -83,13 +85,14 @@ export async function handleOauthCallback(
 			team,
 			user,
 			ts,
+			lang: userInformation.lang,
 		});
 
 		await postOrUpdateMessage({
 			ts: currentTs,
 			channel,
 			slackClient,
-			text: "Et bien je crois que j'ai tout lu... Que souhaiterais tu savoir?",
+			text: selectLang(userInformation.lang).allGood,
 		});
 	} catch (error) {
 		console.error(error);

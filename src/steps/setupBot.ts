@@ -1,4 +1,8 @@
-import { retrieveUserInformation } from "../data-accessors/user-information.js";
+import {
+	UserInformation,
+	retrieveUserInformation,
+} from "../data-accessors/user-information.js";
+import { selectLang } from "../i18n/index.js";
 import { CryptoUsage, sign } from "../utils/basicCrypto.js";
 import { postOrUpdateMessage } from "../utils/postOrUpdateMessage.js";
 import { Services } from "../utils/setupServices.js";
@@ -14,18 +18,23 @@ export async function setupBot(
 		team,
 		slackClient,
 		channel,
-	}: { user: string; team: string; slackClient: WebClient; channel: string },
+		lang,
+	}: {
+		user: string;
+		team: string;
+		slackClient: WebClient;
+		channel: string;
+		lang: UserInformation["lang"];
+	},
 ) {
 	const userInformation = retrieveUserInformation(services, { team, user });
 	if (!userInformation.openAIKey) {
 		await slackClient.chat.postMessage({
-			text: `Bonjour ${userInformation.displayName || "camarade"}!
+			text: `${selectLang(lang).hello} ${
+				userInformation.displayName || "camarade"
+			}!
 
-Nous allons d'abord terminer de m'installer.
-Afin de pouvoir continuer la discussion j'ai besoin d'une clé OpenAI...
-Si tu peux juste me la coller là, ça me permettra d'être plus intelligent :D
-
-Merci!
+${selectLang(lang).prompt.askForKey}
 `,
 			channel,
 		});
@@ -59,8 +68,8 @@ Merci!
 		);
 
 		await slackClient.chat.postMessage({
-			text: `J'ai maintenant besoin d'accéder à tes emails. Peux tu t'authentifier sur un de ces liens s'il te plait ?\n
-<${gmailAuthUrl}|Gmail> ou <${msAuthUrl}|Office365>`,
+			text: `${selectLang(lang).prompt.needEmailAccess}\n
+<${gmailAuthUrl}|Gmail> | <${msAuthUrl}|Office365>`,
 			channel,
 		});
 		return false;
@@ -72,7 +81,7 @@ Merci!
 		!userInformation.lastIndexationDoneAt
 	) {
 		await slackClient.chat.postMessage({
-			text: `Quelque chose s'est mal passé lors de mon dernier accès à tes emails, je vais réesayer...`,
+			text: selectLang(lang).somethingWentWrong,
 			channel,
 		});
 		assertExists(userInformation.accessToken, "userInformation.accessToken");
@@ -87,6 +96,7 @@ Merci!
 				refreshToken: userInformation.refreshToken,
 			},
 			user,
+			lang: userInformation.lang,
 		});
 
 		const { ts: currentTs } = await indexEmails(services, {
@@ -96,13 +106,14 @@ Merci!
 			team,
 			user,
 			ts,
+			lang: userInformation.lang,
 		});
 
 		await postOrUpdateMessage({
 			ts: currentTs,
 			channel,
 			slackClient,
-			text: "Et voilà, tout est okay pour moi ! Que souhaiterais tu savoir ?",
+			text: selectLang(lang).allGood,
 		});
 
 		return false;

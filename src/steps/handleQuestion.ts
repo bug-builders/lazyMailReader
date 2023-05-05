@@ -1,8 +1,13 @@
 import { UserInformation } from "../data-accessors/user-information.js";
-import { metadataDates } from "../prompts/metadata-dates-fr.js";
-import { metadataQuestion } from "../prompts/metadata-question-fr.js";
-import { metadataSenders } from "../prompts/metadata-senders-fr.js";
-import { metadataSubject } from "../prompts/metadata-subject-fr.js";
+import { selectLang } from "../i18n/index.js";
+import { metadataDates as metadataDatesFr } from "../prompts/metadata-dates-fr.js";
+import { metadataDates } from "../prompts/metadata-dates.js";
+import { metadataQuestion as metadataQuestionFr } from "../prompts/metadata-question-fr.js";
+import { metadataQuestion } from "../prompts/metadata-question.js";
+import { metadataSenders as metadataSendersFr } from "../prompts/metadata-senders-fr.js";
+import { metadataSenders } from "../prompts/metadata-senders.js";
+import { metadataSubject as metadataSubjectFr } from "../prompts/metadata-subject-fr.js";
+import { metadataSubject } from "../prompts/metadata-subject.js";
 import { bindChatToSlackMessage } from "../utils/bindChatToSlackMessage.js";
 import {
 	MAX_OPENAI_TOKENS,
@@ -64,12 +69,20 @@ export async function handleQuestion(
 		threadTs,
 	});
 
-	const [dates, subject, generatedQuestion, senders] = await Promise.all([
-		metadataDates(question),
-		metadataSubject(question),
-		metadataQuestion(question),
-		metadataSenders(question),
-	]);
+	const [dates, subject, generatedQuestion, senders] =
+		userInformation.lang === "en"
+			? await Promise.all([
+					metadataDates(question),
+					metadataSubject(question),
+					metadataQuestion(question),
+					metadataSenders(question),
+			  ])
+			: await Promise.all([
+					metadataDatesFr(question),
+					metadataSubjectFr(question),
+					metadataQuestionFr(question),
+					metadataSendersFr(question),
+			  ]);
 
 	await postOrUpdateMessage({
 		metadata: {
@@ -79,13 +92,19 @@ export async function handleQuestion(
 		ts: firstTs,
 		channel,
 		slackClient,
-		text: `_Recherche d'emails ayant pour sujet: ${subject}_
+		text: `_${selectLang(userInformation.lang).prompt.subjectFilter}: ${subject}_
 ${
 	dates.startingDate || dates.endingDate
-		? `_Sur la période ${dates.startingDate} - ${dates.endingDate}_`
+		? `_${selectLang(userInformation.lang).prompt.periodFilter} ${
+				dates.startingDate
+		  } - ${dates.endingDate}_`
 		: ""
 }
-${senders ? `_Envoyés par ${senders.join(" ou ")}` : ""}_
+${
+	senders
+		? `_${selectLang(userInformation.lang).prompt.sentBy} ${senders.join(", ")}`
+		: ""
+}_
 ${question ? `_${generatedQuestion}_` : ""}`,
 		threadTs,
 	});
@@ -186,8 +205,7 @@ ${question ? `_${generatedQuestion}_` : ""}`,
 		});
 
 		const systemPromptTemplate = SystemMessagePromptTemplate.fromTemplate(
-			`Tu es l'assistant personnel des emails de {displayName} <{emailAddress}>.
-Ton but est de lire ses emails puis de répondre à {displayName} du mieux que tu peux.`,
+			selectLang(userInformation.lang).prompt.system,
 		);
 
 		const systemPrompt = await systemPromptTemplate.format({
@@ -195,21 +213,21 @@ Ton but est de lire ses emails puis de répondre à {displayName} du mieux que t
 			emailAddress: userInformation.emailAddress,
 		});
 
-		const humanInitialMessageTemplate =
-			HumanMessagePromptTemplate.fromTemplate(`Je suis {displayName} <{emailAddress}>, nous somme le {currentDate}.
-{question}`);
+		const humanInitialMessageTemplate = HumanMessagePromptTemplate.fromTemplate(
+			selectLang(userInformation.lang).prompt.human,
+		);
 
 		const humanInitialMessage = await humanInitialMessageTemplate.format({
 			displayName: userInformation.displayName,
 			emailAddress: userInformation.emailAddress,
 			question: `${question}
 
-Voici une liste d'emails pouvant contenir la réponse à ma demande.
+${selectLang(userInformation.lang).prompt.list}
 """
 ${inputDocuments.map((document) => document.pageContent).join('\n"""\n"""\n')}
 """
 ---
-Tu peux maintenant répondre à la demande:
+${selectLang(userInformation.lang).prompt.goAnswer}:
 ${question}
 `,
 			currentDate: new Date().toISOString(),
@@ -223,12 +241,12 @@ ${question}
 				? humanInitialMessage
 				: new HumanChatMessage(`${question}
 
-Voici une liste d'emails pouvant contenir la réponse à ma demande.
+${selectLang(userInformation.lang).prompt.list}
 """
 ${inputDocuments.map((document) => document.pageContent).join('\n"""\n"""\n')}
 """
 ---
-Tu peux maintenant répondre à la demande:
+${selectLang(userInformation.lang).prompt.goAnswer}:
 ${question}
 `),
 		]);
@@ -303,7 +321,7 @@ ${[...uniqueMailSources.entries()]
 			ts,
 			threadTs,
 			channel,
-			text: `Oups, quelque chose s'est mal passé, je n'ai pas réussi à réfléchir correctement... Je vais contacter le support pour demander de l'aide !`,
+			text: selectLang(userInformation.lang).contactSupport,
 			slackClient,
 		});
 

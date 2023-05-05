@@ -1,7 +1,9 @@
 import {
+	UserInformation,
 	retrieveUserInformation,
 	saveUserInformation,
 } from "../data-accessors/user-information.js";
+import { selectLang } from "../i18n/index.js";
 import { PROGRESS_PREFIX } from "../utils/constant.js";
 import { postOrUpdateMessage } from "../utils/postOrUpdateMessage.js";
 import { Services } from "../utils/setupServices.js";
@@ -73,6 +75,7 @@ export async function downloadEmails(
 		channel,
 		loaderType,
 		ts,
+		lang,
 	}: {
 		slackClient: WebClient;
 		team: string;
@@ -81,6 +84,7 @@ export async function downloadEmails(
 		loaderType: string;
 		ts?: string;
 		tokens: { accessToken: string; refreshToken: string };
+		lang: UserInformation["lang"];
 	},
 ): Promise<{
 	documents: Document<LazyMailReaderMetadata>[];
@@ -115,7 +119,9 @@ export async function downloadEmails(
 					slackClient,
 					channel,
 					ts: currentTs,
-					text: `${PROGRESS_PREFIX} Téléchargement [${index}/${total}]`,
+					text: `${PROGRESS_PREFIX} ${
+						selectLang(lang).downloading
+					} [${index}/${total}]`,
 				});
 				lastUpdateAt = Date.now();
 			}
@@ -182,13 +188,14 @@ export async function downloadEmails(
 					tokens: { accessToken, refreshToken },
 					user,
 					ts,
+					lang: userInformation.lang,
 				});
 			} catch (error2) {
 				await postOrUpdateMessage({
 					slackClient,
 					channel,
 					ts: currentTs,
-					text: "L'accès aux emails a été révoqué...",
+					text: selectLang(lang).accessRevoked,
 				});
 				// rome-ignore lint/performance/noDelete: <explanation>
 				delete userInformation.accessToken;
@@ -197,7 +204,13 @@ export async function downloadEmails(
 				// rome-ignore lint/performance/noDelete: <explanation>
 				delete userInformation.loaderType;
 				saveUserInformation(services, { team, user, userInformation });
-				await setupBot(services, { user, team, slackClient, channel });
+				await setupBot(services, {
+					user,
+					team,
+					slackClient,
+					channel,
+					lang: userInformation.lang,
+				});
 				throw error2;
 			}
 		}
@@ -206,7 +219,7 @@ export async function downloadEmails(
 			slackClient,
 			channel,
 			ts: currentTs,
-			text: "Quelque chose s'est mal passé. Je vais contacter le support et je reviens vers toi...",
+			text: selectLang(lang).contactSupport,
 		});
 
 		throw error;

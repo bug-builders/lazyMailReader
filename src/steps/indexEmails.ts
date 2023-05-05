@@ -1,7 +1,9 @@
 import {
+	UserInformation,
 	retrieveUserInformation,
 	saveUserInformation,
 } from "../data-accessors/user-information.js";
+import { selectLang } from "../i18n/index.js";
 import { PROGRESS_PREFIX, TWO_SECONDS } from "../utils/constant.js";
 import { postOrUpdateMessage } from "../utils/postOrUpdateMessage.js";
 import { Services } from "../utils/setupServices.js";
@@ -20,6 +22,7 @@ export async function indexEmails(
 		ts,
 		team,
 		user,
+		lang,
 	}: {
 		team: string;
 		user: string;
@@ -27,6 +30,7 @@ export async function indexEmails(
 		channel: string;
 		slackClient: WebClient;
 		documents: Document<LazyMailReaderMetadata>[];
+		lang: UserInformation["lang"];
 	},
 ) {
 	let currentTs = ts;
@@ -49,7 +53,9 @@ export async function indexEmails(
 				await postOrUpdateMessage({
 					slackClient,
 					channel,
-					text: `${PROGRESS_PREFIX}Lecture [${i}/${documents.length}]`,
+					text: `${PROGRESS_PREFIX}${selectLang(lang).reading} [${i}/${
+						documents.length
+					}]`,
 					ts: currentTs,
 				});
 
@@ -71,7 +77,7 @@ export async function indexEmails(
 			slackClient,
 			channel,
 			ts: currentTs,
-			text: "Quelque chose s'est mal passé. Je vais contacter le support et je reviens vers toi...",
+			text: selectLang(lang).contactSupport,
 		});
 		throw error;
 	}
